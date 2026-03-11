@@ -1,0 +1,111 @@
+Savol: nmap haqida ma'lumot
+
+Javob:
+Albatta, Nmap haqida batafsil ma'lumotni quyida keltiraman.
+
+### Nmap nima?
+
+**Nmap** (inglizcha "Network Mapper" so'zlarining qisqartmasi) — bu kompyuter tarmoqlarini skanerlash va xavfsizlik auditini o'tkazish uchun mo'ljallangan bepul va ochiq kodli (open-source) dasturiy vosita. U tarmoqdagi qurilmalarni (hostlarni), ularda ochiq bo'lgan portlarni, ushbu portlarda ishlayotgan xizmatlarni (servislarni), ularning versiyalarini va qurilmalarda o'rnatilgan operatsion tizimlarni aniqlash uchun ishlatiladi.
+
+Nmap — kibexavfsizlik mutaxassislari, tizim administratorlari va tarmoq muhandislari uchun eng muhim va keng tarqalgan vositalardan biri hisoblanadi.
+
+### Nmap nima uchun ishlatiladi?
+
+Nmap juda ko'p vazifalarni bajarishga qodir. Asosiy maqsadlari:
+
+1.  **Hostlarni aniqlash (Host Discovery):** Tarmoqdagi faol (ishlayotgan) qurilmalarni (kompyuterlar, serverlar, printerlar, routerlar va hokazo) topish.
+2.  **Portlarni skanerlash (Port Scanning):** Ma'lum bir qurilmada qaysi TCP va UDP portlar ochiq, yopiq yoki filtrlangaligini aniqlash. Ochiq portlar orqali qurilmaga kirish imkoniyati mavjud bo'lishi mumkin.
+3.  **Xizmat va versiyalarni aniqlash (Service and Version Detection):** Ochiq portlarda qanday dastur yoki xizmat (masalan, veb-server Apache, ma'lumotlar bazasi MySQL) ishlayotganini va uning aniq versiyasini bilish. Bu ma'lum zaifliklarni topish uchun juda muhim.
+4.  **Operatsion tizimni aniqlash (Operating System Detection):** Maqsadli qurilmada qanday operatsion tizim (masalan, Windows 10, Linux Ubuntu, macOS) o'rnatilganini aniqlash.
+5.  **Zaifliklarni skanerlash (Vulnerability Scanning):** **Nmap Scripting Engine (NSE)** yordamida ma'lum zaifliklar, noto'g'ri konfiguratsiyalar va xavfsizlik bo'shliqlarini avtomatik ravishda izlash.
+6.  **Tarmoq xaritasini tuzish (Network Mapping):** Tarmoqning tuzilishini va undagi qurilmalar o'rtasidagi bog'liqlikni tushunishga yordam beradi.
+
+### Kimlar Nmap'dan foydalanadi?
+
+*   **Tizim administratorlari (System Administrators):** O'zlarining tarmoqlaridagi qurilmalarni nazorat qilish, yangi qurilmalarni topish va portlar to'g'ri sozlanganligini tekshirish uchun.
+*   **Kibexavfsizlik mutaxassislari (Cybersecurity Professionals):** Penetration test (pentesting) va xavfsizlik auditi o'tkazishda tarmoqdagi zaif nuqtalarni topish uchun. Ular "oq shapkali" hakerlar deb ham ataladi.
+*   **Tarmoq muhandislari (Network Engineers):** Tarmoqdagi muammolarni bartaraf etish va uning holatini tahlil qilish uchun.
+*   **"Qora shapkali" hakerlar (Black Hat Hackers):** Afsuski, bu vositadan ruxsatsiz tarmoqlarga kirish, zaifliklarni topib, ulardan yomon maqsadda foydalanish uchun ham foydalanishadi.
+
+---
+
+### Asosiy Nmap buyruqlari va ularning izohi
+
+Nmap buyruqlar satri (command line) orqali ishlatiladi. Quyida eng ko'p ishlatiladigan buyruqlardan namunalar keltirilgan:
+
+*(**Izoh:** `[ip_manzil]` yoki `[domen_nomi]` o'rniga siz tekshirmoqchi bo'lgan qurilmaning IP manzilini (masalan, `192.168.1.1`) yoki sayt nomini (masalan, `scanme.nmap.org`) yozasiz).*
+
+1.  **Oddiy skanerlash:**
+    Bu buyruq eng ko'p ishlatiladigan 1000 ta TCP portini tekshiradi.
+    ```bash
+    nmap [ip_manzil]
+    ```
+
+2.  **Ping skanerlash (Hostlarni topish):**
+    Bu buyruq portlarni skanerlamaydi, faqat tarmoqdagi qaysi hostlar faol ekanligini tezda aniqlaydi.
+    ```bash
+    nmap -sn 192.168.1.0/24
+    ```
+    *(Bu buyruq `192.168.1.1` dan `192.168.1.254` gacha bo'lgan barcha IP manzillarni tekshiradi).*
+
+3.  **Xizmat va versiyalarni aniqlash:**
+    Ochiq portlarda qanday dastur va uning versiyasi ishlayotganini aniqlaydi.
+    ```bash
+    nmap -sV [ip_manzil]
+    ```
+
+4.  **Operatsion tizimni aniqlash:**
+    Qurilmaning operatsion tizimini taxmin qilishga harakat qiladi.
+    ```bash
+    nmap -O [ip_manzil]
+    ```
+
+5.  **Agressiv skanerlash:**
+    Bu eng kuchli va "shovqinli" skanerlash turlaridan biri. U bir vaqtning o'zida operatsion tizimni (`-O`), versiyalarni (`-sV`), skriptlarni (`-sC`) va yo'nalishni (traceroute) aniqlaydi.
+    ```bash
+    nmap -A [ip_manzil]
+    ```
+
+6.  **Ma'lum portlarni skanerlash:**
+    Faqat siz ko'rsatgan portlarni tekshiradi.
+    ```bash
+    # Faqat 80-portni skanerlash
+    nmap -p 80 [ip_manzil]
+
+    # 22, 80 va 443-portlarni skanerlash
+    nmap -p 22,80,443 [ip_manzil]
+
+    # 1 dan 100 gacha bo'lgan barcha portlarni skanerlash
+    nmap -p 1-100 [ip_manzil]
+    ```
+
+7.  **Natijalarni faylga saqlash:**
+    Skanerlash natijalarini matnli faylga saqlab qo'yadi.
+    ```bash
+    nmap -oN natija.txt [ip_manzil]
+    ```
+
+### Nmap Scripting Engine (NSE)
+
+Bu Nmap'ning eng kuchli xususiyatlaridan biridir. NSE foydalanuvchilarga Lua dasturlash tilida yozilgan maxsus skriptlar yordamida skanerlash jarayonini avtomatlashtirish va kengaytirish imkonini beradi. NSE skriptlari yordamida quyidagilarni amalga oshirish mumkin:
+*   Murakkab zaifliklarni topish.
+*   Tarmoqdagi xizmatlardan qo'shimcha ma'lumotlar olish.
+*   Brute-force hujumlarini amalga oshirish (masalan, FTP yoki SSH parollarini topishga urinish).
+
+**Misol:** Zaifliklarni topish uchun `vuln` kategoriyasidagi skriptlarni ishga tushirish:
+```bash
+nmap --script vuln [ip_manzil]
+```
+
+---
+
+### ⚠️ Huquqiy va axloqiy jihatlar
+
+**DIQQAT!** Nmap juda kuchli vosita. Birovning tarmog'ini yoki kompyuterini **ruxsatisiz** skanerlash ko'pgina davlatlarda noqonuniy hisoblanadi va "hakerlik hujumi" sifatida baholanishi mumkin.
+
+*   Nmap'dan faqat o'zingizga tegishli bo'lgan yoki sizga aniq ruxsat berilgan tarmoqlarda foydalaning.
+*   O'rganish uchun `scanme.nmap.org` (Nmap yaratuvchilari tomonidan maxsus taqdim etilgan sayt) yoki Hack The Box, TryHackMe kabi maxsus platformalardan foydalaning.
+
+### Xulosa
+
+Nmap — bu tarmoq xavfsizligi sohasida ishlaydigan har bir mutaxassis bilishi shart bo'lgan fundamental vositadir. U tarmoqni chuqur tahlil qilish, muammolarni aniqlash va potentsial zaifliklarni topish uchun beqiyos imkoniyatlarni taqdim etadi.
