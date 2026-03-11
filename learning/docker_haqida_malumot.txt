@@ -1,0 +1,98 @@
+Savol: Docker haqida ma'lumot
+
+Javob:
+Albatta, Docker haqida batafsil ma'lumot beraman.
+
+### Docker nima?
+
+Eng sodda tushuntirish bilan aytganda, **Docker** — bu dasturlarni maxsus ajratilgan muhitlarda, ya'ni **konteynerlarda** yaratish, joylashtirish va ishga tushirish uchun mo'ljallangan ochiq kodli platforma.
+
+Buni yaxshiroq tushunish uchun oddiy o'xshatish keltiramiz:
+Tasavvur qiling, siz yuk tashuvchi kompaniyasiz. Har xil turdagi tovarlarni (mebel, oziq-ovqat, texnika) bir joydan ikkinchi joyga tashishingiz kerak. Agar har bir tovarni alohida-alohida yuklasangiz, bu juda ko'p vaqt, joy va resurs talab qiladi. Buning o'rniga siz standart o'lchamdagi **yuk konteynerlaridan** foydalanasiz. Nima yuklayotganingiz muhim emas, siz hamma narsani konteynerga solasiz va uni istalgan kema, poyezd yoki yuk mashinasida tashiy olasiz.
+
+Docker ham xuddi shu g'oyaga asoslanadi. Dasturiy ta'minot uchun "konteyner" vazifasini bajaradi. Dastur, uning barcha bog'liqliklari (kutubxonalar, sozlamalar, boshqa dasturlar) bitta konteynerga "joylanadi". Bu konteynerni esa istalgan joyda – dasturchining noutbukida, test serverida yoki "bulutli" platformada bir xil tarzda ishga tushirish mumkin.
+
+---
+
+### Nima uchun Docker kerak? ("Ishlayapti-ku menda" muammosi)
+
+Dasturchilar orasida mashhur bir muammo bor: dastur bir dasturchining kompyuterida a'lo darajada ishlaydi, lekin boshqa dasturchining kompyuteriga yoki serverga o'rnatilganda ishlamay qoladi. Bunga sabablar ko'p: operatsion tizim farqlari, kutubxonalar versiyasining mos kelmasligi, sozlamalardagi farqlar va hokazo.
+
+Docker aynan shu muammoni hal qiladi. U dastur uchun **bir xil va o'zgarmas muhit** yaratadi. Dastur konteyner ichida bo'lgani uchun, u qayerda ishga tushirilishidan qat'i nazar, o'z muhitini o'zi bilan olib yuradi.
+
+---
+
+### Dockerning Asosiy Tushunchalari
+
+Docker bilan ishlash uchun quyidagi 4 ta asosiy tushunchani bilish muhim:
+
+1.  **`Dockerfile` (Retsept)**
+    Bu konteynerni qanday qurish kerakligini ko'rsatuvchi oddiy matnli fayl. Unda qaysi operatsion tizimdan foydalanish, qaysi fayllarni nusxalash, qanday buyruqlarni bajarish kabi qadamlar yoziladi. Bu xuddi pishiriq retseptiga o'xshaydi.
+
+    *Misol:*
+    ```dockerfile
+    # 1. Baza sifatida rasmiy Python obrazidan foydalanamiz
+    FROM python:3.9-slim
+
+    # 2. Ishchi katalog yaratamiz
+    WORKDIR /app
+
+    # 3. Kerakli kutubxonalar ro'yxatini nusxalaymiz
+    COPY requirements.txt .
+
+    # 4. Kutubxonalarni o'rnatamiz
+    RUN pip install --no-cache-dir -r requirements.txt
+
+    # 5. Dastur kodini nusxalaymiz
+    COPY . .
+
+    # 6. Konteyner ishga tushganda bajariladigan buyruq
+    CMD ["python", "app.py"]
+    ```
+
+2.  **`Image` (Obraz yoki Qolip)**
+    `Dockerfile` asosida yaratilgan, faqat o'qish uchun mo'ljallangan shablon (qolip). Image o'z ichiga dastur kodini, uning bog'liqliklarini va ishlashi uchun zarur bo'lgan hamma narsani oladi. Buni dasturlashdagi "klass" (class) ga yoki pishiriq uchun tayyorlangan qolipga o'xshatish mumkin.
+
+3.  **`Container` (Konteyner)**
+    Bu `Image`ning ishga tushirilgan nusxasi (instance). Bitta `Image`dan xohlagancha konteyner yaratish mumkin. Har bir konteyner bir-biridan va asosiy tizimdan ajratilgan (izolyatsiya qilingan) holda ishlaydi. Bu dasturlashdagi "obyekt" (object) yoki qolipdan chiqqan pishiriqqa o'xshaydi.
+
+4.  **`Docker Hub / Registry` (Ombor)**
+    Bu Docker Image'larini saqlash va tarqatish uchun mo'ljallangan ombor (baza). **Docker Hub** eng mashhur ommaviy ombordir. Bu xuddi kodlar uchun GitHubga o'xshaydi. Siz tayyor Image'larni (masalan, `ubuntu`, `python`, `nginx`) u yerdan yuklab olishingiz yoki o'zingiz yaratgan Image'larni yuklashingiz mumkin.
+
+---
+
+### Docker va Virtual Mashinalar (VM) o'rtasidagi farq
+
+Ko'pchilik Docker konteynerlarini virtual mashinalar (VM) bilan adashtiradi. Ular o'xshash vazifani bajarsa-da, ishlash texnologiyasi tubdan farq qiladi.
+
+*   **Virtual Mashina (VM):** O'zining shaxsiy operatsion tizimiga (Guest OS) ega bo'ladi. U asosiy kompyuterning (Host OS) resurslarini gipervizor (Hypervisor) yordamida virtualizatsiya qiladi. Bu ancha ko'p resurs (xotira, protsessor) talab qiladi va sekinroq ishga tushadi.
+*   **Docker Konteyner:** Asosiy kompyuterning operatsion tizimi yadrosini (Host OS Kernel) umumiy ishlatadi. U faqat dastur va uning bog'liqliklarini o'z ichiga oladi. Shuning uchun u juda yengil, tez ishga tushadi va kamroq resurs sarflaydi.
+
+
+
+---
+
+### Docker'dan foydalanishning afzalliklari
+
+1.  **Portativlik (Ko'chirish osonligi):** Dastur konteynerini istalgan Docker o'rnatilgan kompyuterda yoki serverda o'zgarishsiz ishga tushirish mumkin.
+2.  **Bir xillik (Consistency):** Dasturchi, testchi va serverdagi muhit bir xil bo'ladi, bu esa "menda ishlayapti-ku" muammosini yo'qotadi.
+3.  **Izolyatsiya (Isolation):** Har bir konteyner o'z muhitida ishlaydi va boshqa konteynerlarga yoki asosiy tizimga ta'sir qilmaydi.
+4.  **Samaradorlik (Efficiency):** VMlarga qaraganda ancha kamroq resurs talab qiladi va soniyalarda ishga tushadi.
+5.  **Masshtablash (Scalability):** Yuklama oshganda dasturning bir nechta nusxasini (konteynerini) osongina ishga tushirish mumkin.
+6.  **Mikroservislar arxitekturasi:** Katta monolit dasturlarni kichik, mustaqil xizmatlarga (mikroservislarga) bo'lish uchun ideal vosita.
+
+---
+
+### Qanday boshlash kerak?
+
+1.  **Docker Desktop dasturini o'rnating:** Windows, macOS yoki Linux uchun rasmiy saytdan yuklab oling: [docker.com](https://www.docker.com/products/docker-desktop/).
+2.  **Terminalda asosiy buyruqlarni sinab ko'ring:**
+    *   `docker --version` - Docker versiyasini tekshirish.
+    *   `docker run hello-world` - Eng oddiy konteynerni ishga tushirish.
+    *   `docker pull ubuntu` - Ubuntu operatsion tizimining Image'ini yuklab olish.
+    *   `docker ps` - Ishlayotgan konteynerlar ro'yxatini ko'rish.
+    *   `docker images` - Mavjud Image'lar ro'yxatini ko'rish.
+
+### Xulosa
+
+Docker zamonaviy dasturiy ta'minot ishlab chiqishda inqilob qildi. U dasturlarni yaratish, sinovdan o'tkazish va joylashtirish jarayonlarini ancha soddalashtirdi, tezlashtirdi va ishonchli qildi. Agar siz dasturchi, DevOps muhandisi yoki tizim administratori bo'lsangiz, Docker'ni o'rganish bugungi kunda juda muhim ko'nikma hisoblanadi.
