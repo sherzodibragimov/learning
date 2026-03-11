@@ -1,0 +1,50 @@
+Savol: web kamer xavfsizligi
+
+Javob:
+Albatta, web-kamera xavfsizligi juda muhim masala. Hakerlar kamerangizga kirish orqali shaxsiy hayotingizga daxl qilishlari, sizni kuzatishlari va yozib olingan ma'lumotlardan shantaj uchun foydalanishlari mumkin.
+
+Quyida web-kamerangizni himoya qilish uchun eng muhim va samarali tavsiyalar keltirilgan:
+
+### 1. Fizik Himoya (Eng ishonchli usul)
+
+**Kamerani yopib qo'ying.** Bu eng oddiy, arzon va 100% samarali usuldir.
+*   **Maxsus qopqoqlar (Webcam Covers):** Internet-do'konlarda yoki kompyuter do'konlarida sotiladigan, suriladigan kichik qopqoqlardan foydalaning.
+*   **Oddiy stiker yoki skotch:** Agar maxsus qopqoq bo'lmasa, kameraning ko'ziga oddiy rangli bo'lmagan skotch, stiker yoki izolyatsiya lentasi yopishtirib qo'ying. Uni ishlatmoqchi bo'lganingizda olib turasiz.
+
+### 2. Dasturiy ta'minot va Tizim Xavfsizligi
+
+**Dasturiy ta'minotni doimiy yangilab boring.**
+Operatsion tizimingizni (Windows, macOS), brauzerlaringizni va boshqa dasturlarni har doim eng so'nggi versiyaga yangilang. Yangilanishlar ko'pincha xavfsizlikdagi zaifliklarni bartaraf etadi.
+
+**Kuchli antivirusdan foydalaning.**
+Nufuzli antivirus dasturini o'rnating va uni doimiy ravishda yangilab turing. Yaxshi antivirus josuslik dasturlari (spyware) va boshqa zararli dasturlarni aniqlab, ularni bloklaydi.
+
+**Firewall (Brandmauer) dan foydalaning.**
+Operatsion tizimingizdagi o'rnatilgan firewall yoqilganligiga ishonch hosil qiling. U ruxsatsiz kirish urinishlarini to'xtatishga yordam beradi.
+
+**Ilovalarning ruxsatlarini tekshiring.**
+Kompyuter va telefoningizdagi sozlamalarga kirib, qaysi ilovalarga kameradan foydalanishga ruxsat berilganini tekshiring. Agar biror dasturga (masalan, kalkulyatorga) kamera kerak bo'lmasa, unga berilgan ruxsatni bekor qiling.
+
+### 3. Yaxshi Odatlar va Ehtiyot Choralar
+
+**Shubhali havolalarni bosmang va fishingga aldanmang.**
+Hakerlar ko'pincha sizni aldab, elektron pochta yoki xabarlar orqali yuborilgan havolalarni bosishga majbur qilishadi. Bu havolalar orqali kompyuteringizga kamerani boshqaruvchi zararli dastur o'rnatilishi mumkin.
+
+**Murakkab va unikal parollardan foydalaning.**
+Barcha hisoblaringiz, ayniqsa kompyuteringiz va elektron pochtangiz uchun murakkab parollar ishlating. Iloji bo'lsa, ikki faktorli autentifikatsiyani (2FA) yoqing.
+
+**Wi-Fi tarmog'ingizni himoyalang.**
+Uy Wi-Fi tarmog'ingiz kuchli parol (WPA2 yoki WPA3 shifrlash usuli bilan) bilan himoyalanganligiga ishonch hosil qiling. Ochiq, himoyalanmagan jamoat Wi-Fi tarmoqlarida shaxsiy ishlarni bajarmang.
+
+### Kamerangiz Buzilganligining Belgilari
+
+Quyidagi alomatlar kamerangizga begona shaxslar kirgan bo'lishi mumkinligidan darak beradi:
+
+*   **Kamera indikatori o'z-o'zidan yonib qolishi:** Agar siz hech qanday dasturni ishga tushirmagan bo'lsangiz ham, kameraning yonidagi chiroq yonib-o'chsa, bu shubhali belgi.
+*   **Kompyuteringizda siz yozib olmagan g'alati video yoki audio fayllar paydo bo'lishi.**
+*   **Kompyuteringizning sekin ishlashi yoki g'ayrioddiy tarmoq faolligi.**
+*   **Antivirus dasturingizning kamera faolligi haqida ogohlantirishi.**
+
+### Xulosa
+
+Web-kamera xavfsizligini ta'minlash uchun ko'p qatlamli yondashuv eng samaralisidir. Lekin eng muhim va eng oddiy qoida — **kamerani ishlatmayotgan paytingizda fizik jihatdan yopib qo'yishdir.** Bu oddiy odat sizni ko'plab noxush holatlardan asraydi.
