@@ -1,0 +1,36 @@
+Nmap orqali FTP portini skanerlayish uchun quyidagi buyruqlarga e'tibor bering:
+
+1. Nmap ni download qiling va install qiling.
+2. Nmap ni tashqi tarmoqga ulaning va FTP server xizmatini qo'llab-quvvatlaydigan mahalliy server yoki xaridagi serverni tanlang.
+3. Nmap bilan FTP portini skanerlash uchun quyidagi buyruqni amalga oshiring:
+
+```bash
+nmap -sV -p 21 [IP yoki domain]
+```
+
+Misoli uchun:
+
+```bash
+nmap -sV -p 21 192.168.1.100
+```
+
+Bu buyruq FTP porti 21 ni skanerlash uchun xaridlansa, lekin bunda bizga server xususiyatlari ham bo'lishi mumkin.
+
+* `-sV` parametrini qo'shish orqali qurilma turi ham aniqlana bo'lishi mumkin.
+* `-p 21` parametrsini qo'shish orqali FTP portining tekshirilishi ko'rsatma beriladi.
+
+Shuningdek, FTP anonim yordamida kirish qobiliyatini tekshirish uchun quyidagi buyruqni amalga oshiring:
+
+```bash
+nmap -sV -p 21 --script=ftp-anon [IP yoki domain]
+```
+
+Misoli uchun:
+
+```bash
+nmap -sV -p 21 --script=ftp-anon 192.168.1.100
+```
+
+Bu buyruq FTP porti 21 ni skanerlash uchun xaridlansa, shuningdek FTP serverga anonim yordamida kirish qobiliyatini ham o'rganadi.
+
+Tayyoridan so'ng, Nmap manzara va natiqlik ni oldinga uzatib bizni qanday nafar FTP serverlar turlaridan foydalanish mumkinligi haqida ma'lumotlar beradi.
