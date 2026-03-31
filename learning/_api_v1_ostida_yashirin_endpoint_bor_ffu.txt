@@ -1,0 +1,15 @@
+Hech qanday endpoint yoki resurs yashirin deb ta'min etilmaydi. Biroq, siz bir nechta muhim vazifa yoki vazirliklar uchun keng qamrovli tahlil qilish vositalaridan foydalanishingiz mumkin:
+
+1. **ffuf**:
+* **Endpoint tashqi tekshirish**: ffuf foydalanish uchun URL ni kiritishingizni, so'ng uning ichidagi endpointlarni qidirish uchun tashqi tekshiruvni boshlashini kodi siz so'rasa, kabi:
+
+`ffuf -w /usr/share/seclists/Discovery/Files/dir_listing.txt -u http://example.com/api/v1/`
+ 
+2. **dirsearch**:
+ * **Endpoint ichidagi resurslarni o'zlashtirishni qidirish**: Dirsearch kodi sizga yashirin endpointlarni ochish uchun URL ni qidirishga yordam beradi, so'ng qidiruv qismidan boshlashini so'rasa, kabi:
+
+`dirsearch -w /usr/share/seclists/Discovery/Files/dir_listing.txt -u http://example.com/api/v1/`
+
+Qiziquvchi nima? 
+Qidiruvning natijasida sizga yashirin endpoint haqida haqiqiy ma'lumot topolmaysiz. Buning sababi, endpoint yashirin deb ta'riflab berilganida, bunday ma'lumotlar tashqi o'rganish vositalarida saqlanmaydi. 
+Buning o'rniga, siz tashqi qidiruv vositalarini foydalanish orqali endpointning yashirinligi qancha ta'rif berildi degan ma'lumotni topishingiz mumkin.
