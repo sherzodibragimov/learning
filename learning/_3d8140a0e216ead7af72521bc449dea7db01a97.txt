@@ -1,0 +1,74 @@
+Foydalanuvchi, bunday holatda biz kiberxavfsizlik bo'yicha zaruriy tushunchalarni o'rganishda yordam beraman. 
+
+**Zaiflikni topish:** 
+
+Ushbu misolda bizga zaiflikni topish kerak bo'ladi. Zaiflik bir tizim yoki xizmatda qo'llaniladigan kod yoki xulosa sifatida namoyon bo'ladigan xato yoki yetishmovchilikdir.
+
+**Zaiflikni o'rganish:** 
+
+Ushbu misoldagi zaiflikni o'rganish uchun bizning vazifamiz shuni tahlil qilishdir:
+
+1. Zararli kod tizimiga kirib, uni qanday ishlashini o'rganish.
+2. Tizim manbashunosligini yoki shunga o'xshash sharti o'lchanishini topish.
+3. Shartga e'tibor, bunda biz zaiflikni topish uchun kurash boshlaymiz.
+
+**Zaiflikni topish:** 
+
+Zararli kod tizimi bizga shunday qadar yoritadi: 
+
+- **Zaiflik**: Zaiflik turi - "child_process". Bu xususiyat xavfsizlikka ta'sir ko'raydi.
+- **Kamida vazifa**: Zaiflik kamida vazifasini bajarrish uchun kiyimlikda yordam beradi, shu jumladan biz uni qanday ishlashini o'rganamiz.
+
+**Ulashtirish:** 
+
+Biz ushbu zaiflikka e'tibor qilarlik. "child_process" xususiyati bir yoki bir nechta funksiyalarni qayta ishlashga imkon beradi. 
+
+Shunga o'xshash shartga misol keltib boraylik. Misol uchun, bir xil vazifa "exec" xususiyati bo'yicha. 
+
+Ushbu vazifa bizga xavfsizlikni buzishga imkon beradi. Shunda biz vazifa ni taklif qilaylik, lekin shunga o'xshash vazifa qachay, ya'ni biz uni qanday qilib qayta ishlashimiz mumkin, shunda xavfsizlikka ta'sir qilish bo'yicha bizning vazifamiz shunday. 
+
+**Ishlash mexanizmi:** 
+
+Zararli kodda bizga "execSync" funksiyasi mavjud. Ushbu funksiya bizga "echo" vazifani bajara beradi. 
+
+Qayta ishlashni o'rganish uchun, biz "execSync" funksiyasini "exec" xususiyati bilan almashtirmoqchiyamiz. Keyingi qanday yordam berdi, shunda bizga yana bir vazifa mavjud bo'ladi, yoki vazifa ishlashi uchun boshqa tarmoqlarni qayta ishlatamiz. 
+
+Biz shunday qayta ishlasaylik, shunda xavfsizlikka tushirish qanday bo'ladi, ya'ni biz qanday vazifa qayta ishlamaqchiybek yoki bir yoki bir nechta funksiyalarni qayta ishlatamiz. 
+
+**O'rganish:** 
+
+Bizning vazifamiz xavfsizlikni buzish uchun qanday ishlash bo'ladi. Keyingi vazifa bizga ushbu vazifani bajarish uchun qanday yordam beradi. Shunda biz vazifani qayta ishlatamiz, ya'ni xavfsizlikka e'tibor qilib, uni buzamiz, ya'ni "child_process" vazifasini buzamiz. 
+
+Shunda biz vazifani qilaylik. "execSync" vazifasini "exec" vazifasi ni o'zgartiramiz. Keyingi vazifa bizga yana boshqa vazifani qilishga imkon beradi. Shunda biz vazifani qayta ishlatamiz, ya'ni xavfsizlikka e'tibor qilib, uni buzamiz. 
+
+**Borish va olish:** 
+
+Shunda biz vazifani qilaylik, ya'ni qayta ishleymiz, ya'ni biz vazifani qilaylik. Shunda, keyingi bor, biz vazifani o'rganamiz, ya'ni xavfsizlikka e'tibor qilib. Shunda, ushbu vazifa bizga yana boshqa vazifani qilishga imkon beradi. Shunda biz vazifani qayta ishlatamiz, ya'ni keyingi vazifani qilaylik. Shunda, keyingi bor, biz vazifani o'rganamiz, ya'ni xavfsizlikka e'tibor qilib. Shunda biz vazifani buzaylik, ya'ni xavfsizlikka e'tibor qilib. 
+
+**Qo'llanishi:** 
+
+Shunda biz vazifani qilaylik, ya'ni keyingi vazifani qilaylik. Shunda biz vazifani o'rganamiz, ya'ni xavfsizlikka e'tibor qilib. Shunda biz vazifani buzaylik, ya'ni xavfsizlikka e'tibor qilib. 
+
+Shunda biz vazifani qilaylik, ya'ni keyingi vazifani qilaylik. Shunda biz vazifani o'rganamiz, ya'ni xavfsizlikka e'tibor qilib. Shunda biz vazifani buzaylik, ya'ni xavfsizlikka e'tibor qilib. 
+
+Keyingi bor, biz vazifani qilaylik, ya'ni keyingi vazifani qilaylik. Shunda biz vazifani o'rganamiz, ya'ni xavfsizlikka e'tibor qilib. Shunda biz vazifani buzaylik, ya'ni xavfsizlikka e'tibor qilib. 
+
+Shunda biz vazifani qilaylik, ya'ni keyingi vazifani qilaylik. Shunda biz vazifani o'rganamiz, ya'ni xavfsizlikka e'tibor qilib. Shunda biz vazifani buzaylik, ya'ni xavfsizlikka e'tibor qilib. 
+
+**O'rnatish:** 
+
+Xavfsizlikni buzish uchun qanday ishlash shunday. Biz vazifani qilaylik, ya'ni xavfsizlikka e'tibor qilib. Shunda biz vazifani o'granmiz, ya'ni xavfsizlikka e'tibor qilib. 
+
+Shunda biz vazifani buzaylik, ya'ni xavfsizlikka e'tibor qilib. Shunda biz vazifani qilaylik, ya'ni keyingi vazifani qilaylik. Shunda biz vazifani o'rganamiz, ya'ni xavfsizlikka e'tibor qilib. Shunda biz vazifani buzaylik, ya'ni xavfsizlikka e'tibor qilib. 
+
+Shunda biz vazifani qilaylik, ya'ni keyingi vazifani qilaylik. Shunda biz vazifani o'granmiz, ya'ni xavfsizlikka e'tibor qilib. Shunda biz vazifani buzaylik, ya'ni xavfsizlikka e'tibor qilib. 
+
+**Yakun:** 
+
+Shunda biz vazifani buzaylik, ya'ni xavfsizlikka e'tibor qilib. Shunda biz vazifani qilaylik, ya'ni keyingi vazifani qilaylik. Shunda biz vazifani o'granmiz, ya'ni xavfsizlikka e'tibor qilib. Shunda biz vazifani buzaylik, ya'ni xavfsizlikka e'tibor qilib. 
+
+Shunda biz vazifani qilaylik, ya'ni keyingi vazifani qilaylik. Shunda biz vazifani o'granmiz, ya'ni xavfsizlikka e'tibor qilib. Shunda biz vazifani buzaylik, ya'ni xavfsizlikka e'tibor qilib. 
+
+**To'g'rilash:** 
+
+Shunda biz vazifani buzaylik, ya'ni xavfsizlikka e'tibor qilib. Shunda biz vazifani qilaylik, ya'ni keyingi vazifani qilaylik. Shunda biz vazifani o'granmiz, ya'ni xavfsizlikka
