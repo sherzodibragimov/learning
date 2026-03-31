@@ -1,0 +1,43 @@
+HTTP headerlarni har-frameda tekshirishda ishlatiladigan Base92 formati uchun quyidagi dasturni yozib olasiz:
+
+```python
+import base64
+
+def base92(text):
+    return base64.b32encode(text.encode('utf-8')).decode('utf-8')
+
+def base092(text):
+    text = text + '===='  # Base32 formati uchun uzatishlar qo'shadi
+    while len(text) % 8 != 0:
+        text += '='  # Oxirgi uzatishni batafsil qiladi
+    return base92(text)
+
+# Misol uchun HTTP headerlarini tekshiruvchi funksiya
+def tekshir_http_header(header):
+    print(base092(header))
+
+# Misol uchun HTTP header kirtish
+header = 'X-Content-Type: nosniff'
+tekshir_http_header(header)
+```
+
+Bu dastur sizga HTTP headerlarni har-frameda tekshirishga yordam beradi va Base92 formatida natijalar beradi. Ammo, X- bilan boshlanadigan header har 50 kadrda paydo bo'lishi mumkin, bu odatda taraqqiyotda davom etmaydi.
+
+Lekin sizning ishni Kalida qanday qilsa bo'lsin, bu xolda, HTTP headerlari kadrda tekshirilishi lozim. Bu uchun siz sizning HTTP tashuvchisini so'ngra 50 kadrda tekshiramiz, ya'ni bu safar siz o'zingiz uchun optimal yechimni toping.
+
+Shunga o'xshash, sizga 50 kadrda HTTP headerlarini tekshirish uchun quyidagi dastur yaratishingiz mumkin:
+
+```python
+import requests
+
+def tekshir_http_header(kadr):
+    response = requests.get('URL', headers={'X-Security': '123'})
+    header = 'X-Content-Type: nosniff'
+    print(base092(header))
+
+# Misol uchun kadrni tekshirish
+kadr = 50
+tekshir_http_header(kadr)
+```
+
+Shunga o'xshash, siz sizning HTTP tashuvchisining kadrni so'ngra 50 qilishingiz kerak, ya'ni bu safar siz 50 kadrda HTTP headerlarini tekshiring.
