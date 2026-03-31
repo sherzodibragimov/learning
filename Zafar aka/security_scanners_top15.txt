@@ -1,0 +1,55 @@
+TOP 15 Open Source Security Scanners
+
+1.  Nmap Type: Network / Port Scanner URL: https://nmap.org Install
+    (Linux): sudo apt install nmap
+
+2.  Masscan Type: High-speed Port Scanner URL:
+    https://github.com/robertdavidgraham/masscan Install (Linux): sudo
+    apt install masscan
+
+3.  RustScan Type: Fast Port Scanner URL:
+    https://github.com/RustScan/RustScan Install: cargo install rustscan
+
+4.  OpenVAS Type: Vulnerability Scanner URL:
+    https://github.com/greenbone/openvas-scanner Install: sudo apt
+    install openvas
+
+5.  Greenbone Vulnerability Manager (GVM) Type: Vulnerability Management
+    Platform URL: https://github.com/greenbone/gvm Install: sudo apt
+    install gvm
+
+6.  Nikto Type: Web Server Vulnerability Scanner URL:
+    https://github.com/sullo/nikto Install: sudo apt install nikto
+
+7.  OWASP ZAP Type: Web Application Security Scanner URL:
+    https://github.com/zaproxy/zaproxy Install: sudo apt install zaproxy
+
+8.  Wapiti Type: Web Vulnerability Scanner URL:
+    https://github.com/wapiti-scanner/wapiti Install: pip install
+    wapiti3
+
+9.  Skipfish Type: Web Application Security Scanner URL:
+    https://github.com/spinkham/skipfish Install: sudo apt install
+    skipfish
+
+10. WhatWeb Type: Web Technology Scanner URL:
+    https://github.com/urbanadventurer/WhatWeb Install: sudo apt install
+    whatweb
+
+11. WPScan Type: WordPress Security Scanner URL:
+    https://github.com/wpscanteam/wpscan Install: gem install wpscan
+
+12. Arachni Type: Web Application Security Scanner URL:
+    https://github.com/Arachni/arachni Install: Download from GitHub
+    releases
+
+13. Nuclei Type: Fast Vulnerability Scanner URL:
+    https://github.com/projectdiscovery/nuclei Install: go install
+    github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+
+14. Zmap Type: Internet-wide Network Scanner URL:
+    https://github.com/zmap/zmap Install: sudo apt install zmap
+
+15. Legion Type: Network Penetration Testing Framework URL:
+    https://github.com/GoVanguard/legion Install: git clone
+    https://github.com/GoVanguard/legion

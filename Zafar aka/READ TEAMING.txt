@@ -1,0 +1,37 @@
+Список продвинутых инструментов для Red Teaming и Pentest | Привет, друг. На связи Эллиот. 1. Certipy — Ультимативный инструмент для анализа и эксплуатации Active Directory Certificate Services (AD CS). Находит критические ошибки в шаблонах сертификатов для захвата домена. 2. Havoc C2 — Современный фреймворк командного управления. Создан для обхода топовых EDR/AV через косвенные системные вызовы (Indirect Syscalls) и глубокое скрытие в памяти. 3. BloodHound — Оружие на базе теории графов. Визуализирует скрытые логические связи в Active Directory, выявляя кратчайшие пути атаки от рядового юзера до Domain Admin. 4. Sliver C2 — Мощная кроссплатформенная платформа на Go от BishopFox. Поддерживает динамическую генерацию пейлоадов и работу через mTLS, DNS и HTTP/S. 5. ScareCrow — Фреймворк для упаковки шелл-кода. Маскирует вредоносные файлы под легитимное ПО с цифровой подписью, эффективно «ослепляя» механизмы поведенческого анализа Windows. 6. Pacu — Полноценный фреймворк для эксплуатации облачной инфраструктуры AWS. Автоматизирует разведку, повышение привилегий в IAM и скрытную кражу данных. 7. Donut — Генератор позиционно-независимого кода (shellcode). Позволяет запускать любые .NET сборки, EXE и DLL прямо в оперативной памяти сторонних процессов без следов на диске. 8. NetExec (nxc) — Наследник CrackMapExec. «Швейцарский нож» для пост-эксплуатации сетей. Идеален для массового сбора хешей, проверки прав доступа и автоматизации атак.
+
+2
+
+🕷️ Инструментарий для сканирования уязвимостей | Привет, друг. На связи Эллиот.
+
+1. Jaeles — мощный движок для автоматизации веб-сканирования. Его сила в кастомных YAML-шаблонах, которые позволяют описывать логику атак, недоступную обычным сканерам.
+2. Arjun — незаменим для поиска скрытых параметров HTTP. Часто именно в забытых параметрах (например, ?debug=true) скрываются критические уязвимости.
+3. Prowler — главный стандарт для проверки безопасности облачной инфраструктуры (AWS, Azure, GCP). Находит ошибки в конфигурациях, которые приводят к утечкам данных.
+4. Certipy — специализированный инструмент для анализа AD CS (Active Directory Certificate Services). Позволяет находить пути эскалации прав до администратора домена через сертификаты.
+5. TruffleHog — сканирует историю коммитов и файловые хранилища на наличие «забытых» ключей API, приватных сертификатов и паролей. 
+6. Semgrep — инструмент статического анализа кода (SAST), который понимает семантику. Позволяет искать сложные паттерны уязвимостей в исходниках приложений.
+7. Kubescape — комплексный сканер для Kubernetes. Проверяет всё: от настроек сети кластера до уязвимостей в образах контейнеров.
+8. Naabu — сверхбыстрый сканер портов, созданный для интеграции в цепочки разведки (Recon). Минимизирует количество пропущенных хостов.
+9. Smogcloud — инструмент для обнаружения теневых облачных активов. Находит то, что компания даже не знала, что у неё есть в облаке.
+10. BloodHound — хотя это инструмент анализа графов, он сканирует и визуализирует скрытые и сложные пути атаки в сетях Active Directory.
+
+#Cybersecurity #Tools #Scanning #Vulnerability #RedTeam #Audit | Mr. Robot
+🔎 Лучшие сканеры различных уязвимостей | Привет, друг. На связи Эллиот.
+
+1. Nuclei - Fast and customizable vulnerability scanner based on simple YAML based DSL;
+2. Sn1per - Attack Surface Management Platform;
+3. Metasploit Framework 
+4. Nikto - web server scanner;
+5. Arachni - web Application Security Scanner Framework;
+6. Jaeles - automated Web Application Testing;
+7. Retire.js - scanner detecting the use of JavaScript libraries with known vulnerabilities;
+8. Osmedeus - Workflow Engine for Offensive Security;
+9. Getsploit - Command line utility for searching and downloading exploits;
+10. Flan - vulnerability scanner;
+11. Findsploit - Find exploits in local and online databases instantly;
+12. BlackWidow - A Python based web application scanner to gather OSINT and fuzz for OWASP vulnerabilities on a target website;
+13. Backslash-powered-scanner - Finds unknown classes of injection vulnerabilities;
+14. Eagle - Multithreaded Plugin based vulnerability scanner for mass detection of web-based applications vulnerabilities;
+15. Cariddi - Take a list of domains, crawl urls and scan for endpoints, secrets, api keys, file extensions, tokens and more.
+
+#Vulnerability #Recon #Scanner
