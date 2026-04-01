@@ -1,0 +1,347 @@
+Zafar Aka:
+CTF BLUE TEAM USTOZLIK REJASI
+Men senga CTF bo‘yicha ustozlik qilaman — lekin flagni tayyor topib berish emas, balki qanday fikrlash, qanday analiz qilish, qanday tool ishlatish va qanday yozib borishni o‘rgataman.
+Sening PDF faylingga qaraganda asosiy fokus:
+Blue Team
+DFIR
+Forensics
+Incident Analysis
+==================================================
+PDF BO‘YICHA ASOSIY XULOSA ==================================================
+Senda musobaqada asosan quyidagi turdagi vazifalar bo‘ladi:
+image (disk image) yaxlitligini tekshirish
+dastlabki shubhali faoliyatni topish
+network traffic (pcap) tahlili
+tizimda sodir bo‘lgan hodisalarni aniqlash
+izlarni yashirishga urinishlarni topish
+messenger token / sessionlarni topish
+browser orqali qo‘lga kiritilgan ma’lumotlarni topish
+Bu shuni anglatadi: sen oddiy “hackerlik”dan ko‘ra ko‘proq raqamli tergovchi bo‘lasan.
+================================================== 2. MEN SENGA QANDAY USTOZLIK QILAMAN
+Biz 3 bosqichda ishlaymiz:
+Fundament (asos)
+CTF’da savolni o‘qish san’ati
+flag qayerda yashirinishi mumkinligi
+time management
+forensics workflow
+network analysis
+Windows / Linux artifact hunting
+browser & messenger trace analysis
+writeup yozish
+Amaliyot Sen menga:
+screenshot
+zip
+pcap
+log
+image
+challenge matni
+yuborasan, men senga:
+qayerdan boshlash
+nimani ko‘rish
+qanday tool ishlatish
+qanday hypothesis qilish
+qanday tekshirish
+ni bosqichma-bosqich o‘rgataman.
+CTF mindset Ko‘pchilik xato qiladi: “Qaysi tool bilan ochaman?”
+Asl savol: “Bu challenge mendan nimani topishni kutyapti?”
+================================================== 3. BLUE TEAM UCHUN ENG MUHIM YO‘NALISHLAR
+Quyidagi yo‘nalishlar sen uchun eng muhim:
+Network traffic analysis
+System event reconstruction
+Anti-forensics detection
+Token/session extraction
+Shuning uchun tayyorgarlik aynan shu yo‘nalishda bo‘ladi.
+================================================== 4. CTF USTOZLIK REJASI
+1-BOB. CHALLENGE KO‘RGANINGDA NIMA QILASAN?
+Har safar shu 7 qadamni bajar:
+QADAM 1 — Challenge matnini parchalash Savoldan quyidagini ajratib ol:
+Nima topish kerak?
+IP manzilmi?
+Username’mi?
+Process nomimi?
+Hashmi?
+Fayl nomimi?
+Flag formatimi?
+Qaysi vaqt oralig‘i?
+Initial compromise
+Persistence
+Exfiltration
+Privilege escalation
+Qaysi artifact muhim?
+pcap?
+disk image?
+event logs?
+browser data?
+memory dump?
+OLTIN QOIDA: Challenge matnining o‘zi ko‘pincha yarim javob beradi.
+QADAM 2 — Fayl turini aniqlash Masalan:
+.pcap / .pcapng → network
+.E01 / .dd / .img → disk forensics
+.evtx → Windows logs
+.zip / .7z → ichini ko‘r
+.mem / .raw → memory analysis
+.sqlite / .db → browser, app, token, chat izlari
+QADAM 3 — Timeline qurish Har challenge’da savol ber:
+Birinchi nima bo‘lgan?
+Keyin nima bo‘lgan?
+Oxirida nima olib chiqilgan?
+QADAM 4 — Eng oson joylarni tekshir Avval quyidagilarni ko‘r:
+file names
+browser history
+downloads
+desktop documents
+recent files
+powershell history
+shell history
+suspicious IP/domain
+weird process name
+base64 strings
+temp folders
+QADAM 5 — Pattern qidir Ko‘p flaglar quyidagicha bo‘ladi:
+flag{...}
+ctf{...}
+uzctf{...}
+answer: ...
+hash-like string
+token-like string
+suspicious long string
+QADAM 6 — Har topilmani yozib bor Har challenge uchun yoz:
+Filename:
+Type:
+First findings:
+Suspicious indicators:
+Possible timeline:
+Candidate flags:
+Dead ends:
+QADAM 7 — Tool emas, savolni boshqar Noto‘g‘ri: “Wireshark ochdim, endi nima qilaman?”
+To‘g‘ri: “Men foydalanuvchi nimani yuklab olganini topmoqchiman, demak HTTP/DNS/TLS trace ko‘raman.”
+2-BOB. BLUE TEAM UCHUN ENG MUHIM 6 YO‘NALISH
+A) Disk image / image integrity analysis
+Nima qilasan:
+Hash tekshir
+MD5
+SHA1
+SHA256
+Image metadata
+partition bormi?
+filesystem nima?
+OS qanaqa?
+Forensic tool bilan och
+Autopsy
+FTK Imager
+Arsenal Image Mounter
+Sleuth Kit
+Qidiradigan joylar:
+Desktop
+Downloads
+Documents
+AppData
+
+Temp
+Recycle Bin
+Browser profiles
+Registry hives
+Prefetch
+Event logs
+CTF’da odatda nimani yashirishadi?
+downloaded malware
+opened document
+browser credentials
+deleted file
+powershell script
+suspicious exe
+encoded text
+B) Dastlabki shubhali faoliyatni aniqlash
+Bu “initial compromise”ni topish degani.
+Savollar:
+Foydalanuvchi nimani bosgan?
+Qaysi fayl birinchi ishga tushgan?
+Email attachment bo‘lganmi?
+Browser orqali exploit bo‘lganmi?
+USB orqali kirganmi?
+Ko‘r:
+Downloads
+Recent files
+LNK files
+Prefetch
+RunMRU
+Browser history
+Startup entries
+Powershell history
+Belgilar:
+random nomli .exe
+Office macro
+powershell -enc
+cmd /c
+%temp% ichida ishga tushgan fayl
+suspicious .zip, .iso, .js, .hta
+C) Network Traffic Analysis (PCAP)
+Bu Blue Team CTF’ning eng kuchli bo‘limlaridan biri.
+PCAP ochganda birinchi 10 ish:
+Protocol Hierarchy
+Endpoints
+Conversations
+DNS requests
+HTTP Host / URI
+Follow TCP Stream
+Export Objects
+User-Agent
+TLS SNI / certificates
+Filtering
+Eng muhim Wireshark filterlar:
+http dns tcp udp ip.addr == x.x.x.x http.request http.response ftp smb tls
+CTF’da pcap’dan odatda nimani so‘rashadi?
+attacker IP
+victim IP
+malicious domain
+downloaded filename
+exfiltrated file
+login credentials
+command & control traffic
+suspicious POST request
+D) Tizimda sodir bo‘lgan hodisalarni aniqlash
+Bu — incident reconstruction.
+Savollar:
+Nima bo‘ldi?
+Qachon bo‘ldi?
+Kim qildi?
+Nima ishga tushdi?
+Nima o‘chirildi?
+Windows:
+Event Viewer logs (.evtx)
+Security logs
+Sysmon
+PowerShell logs
+Prefetch
+Registry
+Scheduled Tasks
+Services
+Startup
+LNK files
+Linux:
+/var/log/auth.log
+/var/log/syslog
+.bash_history
+cron jobs
+ssh logs
+process logs
+E) Izlarni yashirishga urinishlar (Anti-Forensics)
+Belgilar:
+loglar o‘chirilgan
+timestamps g‘alati
+temp fayllar tozalangan
+browser history partial
+deleted artifacts
+wiped commands
+renamed malware
+timestomping
+“Aha!” joylar:
+Event ID gaps
+Prefetch bor, lekin fayl yo‘q
+LNK bor, original fayl yo‘q
+registry entry bor, executable o‘chirilgan
+browser cache bor, history yo‘q
+F) Browser / Messenger token & sessions
+Bu juda CTF’ga xos bo‘lim.
+Browser’da qayerga qaraysan?
+Chrome / Chromium:
+History
+Cookies
+Login Data
+Web Data
+Local Storage
+Session Storage
+Cache
+Firefox:
+places.sqlite
+cookies.sqlite
+sessionstore
+Ko‘p uchraydigan maqsadlar:
+Telegram web
+Discord token
+webmail session
+cloud storage access
+social account trace
+================================================== 5. O‘RGANISHING SHART BO‘LGAN TOP TOOLLAR
+Asosiy toolkit:
+Forensics:
+Autopsy
+FTK Imager
+Registry Explorer
+HxD
+KAPE
+Velociraptor
+Network:
+Wireshark
+NetworkMiner
+Zeek
+Logs:
+Event Viewer
+EvtxECmd
+Chainsaw
+Browser / DB:
+DB Browser for SQLite
+Browser History Viewer
+strings
+grep / findstr
+Memory:
+Volatility 3
+================================================== 6. O‘QISH YO‘LI
+1-hafta — Foundation
+CTF nima
+Flag qidirish logikasi
+File types
+Basic Linux commands
+Hash / strings / metadata
+2-hafta — Disk Forensics
+image ochish
+deleted file
+browser artifacts
+recent activity
+3-hafta — Network Forensics
+Wireshark basics
+DNS/HTTP/TLS
+Follow stream
+Export objects
+4-hafta — Windows Artifacts
+Event logs
+Prefetch
+LNK
+Registry
+Persistence
+5-hafta — Anti-Forensics & Threat Hunting
+cleanup traces
+timestomping
+suspicious behavior
+IOC extraction
+6-hafta — Real CTF simulation
+challenge walkthrough
+mustaqil tahlil
+writeup yozish
+================================================== 7. BOSHLANG‘ICH XATOLAR
+Xato 1: Bitta tool ochib, hamma javobni undan kutish
+Xato 2: Challenge matnini e’tiborsiz qoldirish
+Xato 3: Topgan narsani yozib bormaslik
+Xato 4: Hammasini technical qilib yuborib, timeline qura olmaslik
+================================================== 8. MEN SENGA QANDAY FORMATDA YORDAM BERAMAN
+Har safar sen challenge yuborasan, men quyidagi formatda javob beraman:
+Challenge nima so‘rayapti
+
+Nima artifact muhim
+Qayerdan boshlash kerak
+Qanday tool ishlatish kerak
+Nima qidirish kerak
+Topgan narsani qanday tekshirish kerak
+Candidate flag qanday ajratiladi
+Writeup qanday yoziladi
+================================================== 9. HOZIRGI ENG TO‘G‘RI START
+Agar rostdan boshlamoqchi bo‘lsang, birinchi dars quyidagicha bo‘ladi:
+1-DARS: Blue Team CTF Workflow
+Unda quyidagilarni o‘rganasan:
+challenge ko‘rgan zahoti nima qilish
+pcap bo‘lsa nima qilish
+image bo‘lsa nima qilish
+event log bo‘lsa nima qilish
+browser artifact bo‘lsa nima qilish
+Oxirida mini practice task qilamiz.
+YAKUN: Sen xohlasang, men seni noldan boshlab CTF Blue Team bo‘yicha real mentor kabi tayyorlayman. Har challenge’da sen bilan birga tahlil qilaman va mustaqil solve qilish darajasiga olib chiqaman.
