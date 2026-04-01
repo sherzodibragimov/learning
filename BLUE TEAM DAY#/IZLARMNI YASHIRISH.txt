@@ -1,0 +1,755 @@
+5-vazifa: **Izlarni yashirishga urinishlarni aniqlash (1600 ball)** – **Windows muhiti** uchun to‘liq qo‘llanma.
+
+Bu vazifa sizga buzg‘unchining o‘z izlarini yo‘qotish, yashirish yoki o‘zgartirishga urinishlarini aniqlashni talab qiladi. 1600 ball – bu jiddiy qism, chunki anti-forensics texnikalarini aniqlash ko‘pincha eng murakkab va yuqori malaka talab qiladigan bosqichdir.
+
+---
+
+## 1. ANTI-FORENSICS NIMA VA NIMA UCHUN MUHIM
+
+Izlarni yashirishga urinishlar – bu buzg‘unchining o‘z faoliyatini yashirish uchun qiladigan harakatlari. Windows muhitida eng ko‘p uchraydigan anti-forensics texnikalari:
+
+| Texnika | Maqsad | Qanday ishlaydi |
+|---------|--------|----------------|
+| **Log tozalash** | Event loglarni o‘chirish | `wevtutil cl`, Event Viewer, PowerShell `Clear-EventLog` |
+| **USN Journal o‘chirish** | NTFS journaldagi izlarni yo‘qotish | `fsutil usn deletejournal` |
+| **Timestomping** | Fayl vaqt belgilarini o‘zgartirish | `Set-ItemProperty -Name CreationTime`, `touch`-ga o‘xshash vositalar |
+| **MFT bo‘sh joyini tozalash** | O‘chirilgan fayllarning MFT yozuvlarini yo‘qotish | `sdelete -z` |
+| **Shellbag tozalash** | File Explorer tarixini o‘chirish | Registry kalitlarini o‘chirish |
+| **Prefetch o‘chirish** | Exe ishga tushirilgan vaqtlarini yo‘qotish | `del C:\Windows\Prefetch\*` |
+| **Shadow Copies o‘chirish** | Volume Shadow Copy (VSS) da saqlangan nusxalarni yo‘qotish | `vssadmin delete shadows`, `wmic shadowcopy delete` |
+| **History tozalash** | PowerShell / CMD history | `Clear-History`, `del %userprofile%\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt` |
+| **File hiding** | Fayllarni yashirish | Alternate Data Streams (ADS), `attrib +h`, rootkit |
+| **Rootkit** | Process, fayl, registry yashirish | Kernel driver orqali |
+
+---
+
+## 2. DETEKSIYA STRATEGIYASI
+
+Izlarni yashirishga urinishlarni aniqlash uchun **uch qatlamli** yondashuv kerak:
+
+1. **Log tahlili** – tozalash izlari (Event ID, bo‘sh log fayllar)
+2. **Fayl tizimi artefaktlari** – MFT, USN, Prefetch, Amcache dagi anomaliyalar
+3. **Memory tahlili** – yashirilgan processlar, rootkit, runtime behaviour
+
+---
+
+## 3. LOG TOZALASHNI ANIQLASH
+
+### 3.1. Event ID 1102 va 104 – Security log tozalangan
+
+Windows Security log tozalanganda **Event ID 1102** qayd etiladi. System log tozalanganda **Event ID 104**.
+
+**PowerShell orqali tekshirish (jonli tizim yoki image):**
+```powershell
+# Security log tozalash
+Get-WinEvent -FilterHashtable @{LogName='Security'; ID=1102} -MaxEvents 100 | Select-Object TimeCreated, Message
+
+# System log tozalash
+Get-WinEvent -FilterHashtable @{LogName='System'; ID=104} -MaxEvents 100 | Select-Object TimeCreated, Message
+```
+
+**Kali-da evtx_dump bilan:**
+```bash
+evtx_dump Security.evtx | grep -E "EventID.*1102|Event ID.*1102" -A 10
+```
+
+**Muhim:** Agar log tozalangan bo‘lsa, bu hodisa o‘zi **shubhali faoliyat** deb hisoblanadi. Hisobotda bu vaqtni belgilang va shu vaqt oralig‘ida boshqa artefaktlarni (MFT, Prefetch) tekshiring .
+
+### 3.2. wevtutil yoki PowerShell bilan tozalash izlari
+
+Agar `wevtutil` orqali log tozalangan bo‘lsa, process creation eventlarida (Sysmon Event ID 1 yoki Security 4688) bu qayd etiladi.
+
+**PowerShell bilan process creation tekshirish:**
+```powershell
+Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4688} | Where-Object {$_.Message -like "*wevtutil*" -and $_.Message -like "*cl*"} | Select-Object TimeCreated, Message
+```
+
+**Sysmon bo‘lsa (Event ID 1):**
+```powershell
+Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; ID=1} | Where-Object {$_.Message -like "*wevtutil*"} | Select-Object TimeCreated, Message
+```
+
+### 3.3. Log fayllarining o‘chirilganligi
+
+Buzg‘unchi to‘g‘ridan-to‘g‘ri `.evtx` fayllarni o‘chirishi mumkin. Bu holda:
+- Event log fayli yo‘q (bo‘sh papka)
+- Yoki fayl o‘lchami juda kichik
+
+**Disk image tahlilida:**
+```bash
+ls -la /mnt/win/Windows/System32/winevt/Logs/
+```
+Agar fayllar kutilganidan kichik yoki yo‘q bo‘lsa – shubha.
+
+**NTFS undelete bilan tiklashga urinish:**
+```bash
+ntfsundelete /dev/loop0p1 -u -d /tmp/recovered/ -m "*.evtx"
+```
+
+---
+
+## 4. USN JOURNAL O‘CHIRISHNI ANIQLASH
+
+USN Journal (Update Sequence Number Journal) – NTFS da fayl o‘zgarishlarining to‘liq jurnali. Buzg‘unchi `fsutil usn deletejournal /d C:` bilan uni o‘chirishi mumkin .
+
+**USN Journal mavjudligini tekshirish (Windows):**
+```cmd
+fsutil usn queryjournal C:
+```
+Agar "The USN Journal is not active" chiqsa – journal o‘chirilgan.
+
+**Forensic tahlilida:**
+- USN journal fayli `$UsnJrnl` MFT entry 0x0000000000000023 da joylashgan.
+- Agar USN o‘chirilgan bo‘lsa, MFT da bu entry o‘chirilgan yoki tozalangan bo‘ladi.
+
+**Kali-da USN journal tahlili:**
+```bash
+sudo apt install ntfs-3g
+usnjrnl -m /dev/loop0p1 2>&1 | head -50
+```
+Agar hech narsa chiqmasa yoki xato bo‘lsa – journal o‘chirilgan bo‘lishi mumkin.
+
+**Muhim:** USN journal o‘chirilgan bo‘lsa, bu **kuchli IOC** – normal tizimda bu amal bajarilmaydi. Hisobotda aniq belgilang .
+
+---
+
+## 5. TIMESTOMPING ANIQLASH (MFT, $LogFile, $UsnJrnl)
+
+Timestomping – fayllarning MACB (Modified, Accessed, Created, Birth) vaqtlarini o‘zgartirish. Bu Windows-da `Set-ItemProperty` yoki `touch` kabi vositalar bilan amalga oshiriladi .
+
+### 5.1. MFT tahlili – timestamp anomaliyalari
+
+**AnalyzeMFT bilan MFT tahlili:**
+```bash
+analyzeMFT.py -f mft.dd -o mft.csv
+```
+CSV da qidiriladigan anomaliyalar:
+- `Modified` vaqt `Created` vaqtdan **oldin** bo‘lsa (impossible timestamp)
+- `Born` (Birth) vaqt yo‘q bo‘lsa (Windows 10/11 da ba’zi fayllarda bo‘lmasligi mumkin, lekin ko‘pchilikda bor)
+- Bir necha faylning vaqtlari bir xil sekundga teng (mass timestomping)
+
+### 5.2. NTFS Log Tracker (v1.9+)
+
+Bu vosita $MFT, $LogFile, $UsnJrnl, Prefetch va LNK fayllarni solishtirib timestamp manipulyatsiyasini aniqlaydi .
+
+**Yuklab olish va ishlatish (Windows):**
+```cmd
+NTFSLogTracker.exe C: -o report.csv
+```
+Chiqishda timestamp inconsistency bo‘lgan fayllar belgilanadi.
+
+### 5.3. Prefetch va Amcache bilan korrelyatsiya
+
+Prefetch fayllar executable ishga tushirilgan vaqtni saqlaydi. Agar MFT da fayl vaqti Prefetch vaqtiga mos kelmasa – timestomping bo‘lishi mumkin.
+
+**Prefetch tahlili:**
+```bash
+prefetch-parser.py /mnt/win/Windows/Prefetch/*.pf > prefetch.csv
+```
+**Amcache tahlili:**
+```bash
+regripper -r /mnt/win/Windows/AppCompat/Programs/Amcache.hve -p amcache > amcache.txt
+```
+Keyin MFT vaqti bilan solishtiring. Agar Prefetch da 14:00 da ishga tushirilgan fayl, MFT da 10:00 deb ko‘rinsa – vaqt o‘zgartirilgan.
+
+---
+
+## 6. PREFETCH O‘CHIRISHNI ANIQLASH
+
+Prefetch papkasi (`C:\Windows\Prefetch`) da executable ishga tushirilgan vaqt va necha marta ishga tushirilganligi saqlanadi.
+
+**Prefetch o‘chirilganligini tekshirish:**
+```bash
+ls -la /mnt/win/Windows/Prefetch/ | wc -l
+```
+Agar papka bo‘sh yoki juda kam fayl bo‘lsa – o‘chirilgan bo‘lishi mumkin.
+
+**Registry orqali Prefetch enabled/disabled:**
+```bash
+reg query HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters /v EnablePrefetcher
+```
+`EnablePrefetcher = 0` bo‘lsa – Prefetch o‘chirilgan. Bu normal tizimda kam uchraydi.
+
+---
+
+## 7. SHELLBAG TOZALASHNI ANIQLASH
+
+Shellbag – File Explorer da ochilgan papkalar tarixi (papka o‘lchami, ko‘rinish, joylashuv). Buzg‘unchi shellbag registry kalitlarini o‘chirib, qaysi papkalarga kirganligini yashirishga urinadi .
+
+**Shellbag registry kalitlari:**
+- `HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\BagMRU`
+- `HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\Bags`
+
+**Tahlil qilish (regripper):**
+```bash
+rip -r NTUSER.DAT -p shellbags > shellbags.txt
+```
+Agar BagMRU da ma’lumot yo‘q yoki juda kam bo‘lsa – tozalangan bo‘lishi mumkin.
+
+**NirSoft ShellBagsView (Windows):**
+```cmd
+ShellBagsView.exe /scomma shellbags.csv
+```
+Agar hech narsa chiqmasa yoki faqat bir necha entry bo‘lsa – shubha.
+
+---
+
+## 8. SHADOW COPIES (VSS) O‘CHIRISHNI ANIQLASH
+
+Volume Shadow Copy – tizim nusxalari. Buzg‘unchi `vssadmin delete shadows /all /quiet` yoki `wmic shadowcopy delete` bilan ularni o‘chirishi mumkin.
+
+**VSS o‘chirilganligini tekshirish:**
+```cmd
+vssadmin list shadows
+```
+Agar hech qanday shadow copy chiqmasa, lekin tizimda VSS enabled bo‘lsa – o‘chirilgan.
+
+**Event logda VSS o‘chirish izlari:**
+- Event ID 8224 (VSS)
+- Event ID 33 (VSS)
+
+**PowerShell bilan tekshirish:**
+```powershell
+Get-WinEvent -FilterHashtable @{LogName='Application'; ID=8224,33} -MaxEvents 50
+```
+
+---
+
+## 9. FILE HIDING – ALTERNATE DATA STREAMS (ADS)
+
+NTFS da fayllarga yashirin ma’lumotlar qo‘shish mumkin.
+
+**ADS ni aniqlash:**
+```cmd
+dir /r C:\path\to\suspicious
+```
+Yoki **Streams** (Sysinternals):
+```cmd
+streams64.exe -s C:\
+```
+
+**Kali-da ADS tahlili:**
+```bash
+fls -r /dev/loop0p1 | grep ":$"
+```
+
+---
+
+## 10. ROOTKIT DETEKSIYASI
+
+Rootkit – kernel darajasida process, fayl, registry, tarmoq ulanishlarini yashiradi.
+
+### 10.1. GMER
+
+**GMER** – rootkit detection vositasi. Buzg‘unchi uni o‘zi ishlatib, keyin o‘chirishi mumkin, lekin izi qoladi .
+
+**GMER ishlatilganligini aniqlash (FortiSIEM rule):**
+- Process name: `gmer.exe`
+- Hash: `MD5=E9DC058440D321AA17D0600B3CA0AB04`, `SHA256=E8A3E804A96C716A3E9B69195DB6FFB0D33E2433AF871E4D4E1EAB3097237173` 
+
+**PowerShell bilan tekshirish:**
+```powershell
+Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4688} | Where-Object {$_.Message -like "*gmer*"}
+```
+
+### 10.2. Process Hacker / GMER (jonli tizim)
+
+Agar jonli tizimda rootkit shubhasi bo‘lsa:
+```cmd
+# GMER
+gmer.exe -scan
+```
+Yoki **Process Hacker** – yashirin processlarni ko‘rsatadi.
+
+### 10.3. Volatility bilan memory dump tahlili
+
+Memory dump da rootkitni aniqlash:
+```bash
+vol3 -f memory.raw windows.psscan      # yashirin processlar
+vol3 -f memory.raw windows.modscan     # yashirin driverlar
+vol3 -f memory.raw windows.callbacks   # kernel callback rootkit
+vol3 -f memory.raw windows.ssdt        # SSDT hooklar
+```
+
+---
+
+## 11. AUTO LOGGER – HIDDEN EVIDENCE (ETW)
+
+Fortinet tadqiqotchilari aniqlaganidek, `AutoLogger-Diagtrack-Listener.etl` faylida **o‘chirilgan malware va vositalar** haqida ma’lumot qolishi mumkin .
+
+**Fayl joylashuvi:**
+```
+%ProgramData%\Microsoft\Diagnosis\ETLLogs\AutoLogger\AutoLogger-Diagtrack-Listener.etl
+```
+
+**Tahlil qilish:**
+```cmd
+# ETL faylni CSV ga chiqarish
+tracerpt AutoLogger-Diagtrack-Listener.etl -o etw_events.csv
+```
+Bu faylda **o‘chirilgan binary** lar haqida process creation ma’lumotlari bo‘lishi mumkin (masalan, ransomware binary, GMER, batch fayllar) .
+
+**Muhim:** Bu artefakt ko‘plab IR tadqiqotchilari bilmagan yashirin manba. Musobaqada buni topib hisobotga qo‘shsangiz, **qo‘shimcha ball** olish imkoniyati katta.
+
+---
+
+## 12. MAKSIMAL BALL UCHUN STRATEGIYA (5-VAZIFA)
+
+| Bosqich | Harakat | Vaqt | Ball ulushi |
+|---------|--------|------|-------------|
+| 1 | Event log tozalashni tekshirish (ID 1102, 104) | 5 min | 20% |
+| 2 | USN Journal mavjudligini tekshirish | 3 min | 15% |
+| 3 | MFT va Prefetch/Amcache korrelyatsiyasi (timestomping) | 15 min | 25% |
+| 4 | Shellbag, Prefetch, VSS o‘chirish izlari | 10 min | 15% |
+| 5 | ADS va yashirin fayllar | 5 min | 5% |
+| 6 | Rootkit detection (GMER, Process Hacker, Volatility) | 15 min | 15% |
+| 7 | AutoLogger ETL tahlili | 5 min | 5% |
+
+---
+
+## 13. BLUE TEAM SIFATIDA XAVFSIZLIKNI TA’MINLASH
+
+Siz nafaqat aniqlaysiz, balki **oldini olish va himoyalanish** choralarini ham bilishingiz kerak.
+
+### 13.1. Centralized Logging (SIEM)
+
+Barcha event loglarni markaziy serverga (Splunk, ELK, FortiSIEM) yuboring. Agar buzg‘unchi lokal loglarni tozalasa, markazda nusxa qoladi .
+
+**Windows Event Forwarding (WEF) sozlash:**
+```xml
+<Subscription xmlns="http://schemas.microsoft.com/2006/03/windows/events/subscription">
+    <SubscriptionId>ForwardToSIEM</SubscriptionId>
+    <SubscriptionType>SourceInitiated</SubscriptionType>
+    <Description>Forward all Security events</Description>
+    <Query>
+        <![CDATA[
+            <QueryList>
+                <Query Id="0">
+                    <Select Path="Security">*</Select>
+                </Query>
+            </QueryList>
+        ]]>
+    </Query>
+</Subscription>
+```
+
+### 13.2. Sysmon deployment
+
+Sysmon ETW orqali process creation, network connection, file creation kabi ko‘plab ma’lumotlarni yig‘adi .
+
+**Sysmon konfiguratsiyasi:**
+```xml
+<Sysmon schemaversion="4.30">
+    <EventFiltering>
+        <ProcessCreate onmatch="exclude">
+            <Image condition="is">C:\Windows\System32\svchost.exe</Image>
+        </ProcessCreate>
+        <ProcessCreate onmatch="include">
+            <CommandLine condition="contains">wevtutil</CommandLine>
+            <CommandLine condition="contains">fsutil usn deletejournal</CommandLine>
+            <CommandLine condition="contains">vssadmin delete shadows</CommandLine>
+        </ProcessCreate>
+    </EventFiltering>
+</Sysmon>
+```
+
+### 13.3. Audit Polices – ko‘proq logging
+
+Default audit settings yetarli emas. Quyidagi audit policesini yoqing:
+
+```cmd
+auditpol /set /subcategory:"Process Creation" /success:enable /failure:enable
+auditpol /set /subcategory:"File System" /success:enable /failure:enable
+auditpol /set /subcategory:"Registry" /success:enable /failure:enable
+auditpol /set /subcategory:"Filtering Platform Packet Drop" /success:enable /failure:enable
+```
+
+### 13.4. USN Journal va Prefetch himoyasi
+
+- **USN Journal o‘chirilishini monitoring** – `fsutil usn deletejournal` ni process creation da blokirovka qilish.
+- **Prefetch o‘chirilishini monitoring** – Prefetch papkasiga write access ni faqat SYSTEM bilan cheklash.
+
+### 13.5. LAPS (Local Administrator Password Solution)
+
+Har bir tizimda unique local admin password – lateral movement va persistence ni qiyinlashtiradi.
+
+### 13.6. Windows Defender / Microsoft Defender for Endpoint
+
+Defender ni `Attack Surface Reduction` (ASR) qoidalari bilan sozlash:
+```powershell
+Add-MpPreference -AttackSurfaceReductionRules_Ids "b2b3f03d-6a65-4f7b-a9c7-1c7ef74a9ba4" -AttackSurfaceReductionRules_Actions Enabled
+```
+
+### 13.7. PowerShell Logging
+
+PowerShell Script Block Logging va Transcription ni yoqish:
+```powershell
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" -Name "EnableScriptBlockLogging" -Value 1
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription" -Name "EnableTranscripting" -Value 1
+```
+
+---
+
+## 14. KERAKLI INSTRUMENTLAR RO‘YXATI
+
+| Instrument | Vazifa | Muhit |
+|------------|--------|-------|
+| **AFDT (Anti Forensic Detection Tool)** | EVTX tozalash, timestomping, MFT, recycle bin, carving | Windows  |
+| **NTFS Log Tracker v1.9** | Timestamp manipulation detection | Windows  |
+| **GMER** | Rootkit detection | Windows  |
+| **Volatility 3** | Memory dump – rootkit, hidden processes | Kali |
+| **Streams (Sysinternals)** | ADS detection | Windows |
+| **ShellBagsView (NirSoft)** | Shellbag analysis | Windows |
+| **evtx_dump** | Windows event log parsing | Kali |
+| **analyzeMFT** | MFT analysis | Kali |
+| **prefetch-parser** | Prefetch analysis | Kali |
+| **usnjrnl** | USN Journal analysis | Kali |
+| **regripper** | Registry analysis (shellbag, prefetch settings) | Kali |
+| **sdelete** (analiz uchun) | MFT free space wipe detection | Windows |
+
+---
+
+## 15. HISOBOTGA YOZILADIGAN IOCs
+
+1. **Log clearing indicators:**
+   - Event ID 1102, 104
+   - `wevtutil cl` command execution
+   - Empty or unusually small `.evtx` files
+
+2. **USN Journal deletion:**
+   - `fsutil usn deletejournal` execution
+   - USN journal inactive
+
+3. **Timestomping:**
+   - MFT timestamp inconsistencies
+   - Prefetch/MFT/Amcache timestamp mismatch
+
+4. **Anti-forensics tools:**
+   - GMER execution (hash, process name)
+   - sdelete, wiper tools
+
+5. **Hidden evidence:**
+   - AutoLogger-Diagtrack-Listener.etl da deleted binary traces
+   - Alternate Data Streams
+
+6. **Persistence removal attempts:**
+   - Shadow copy deletion
+   - Shellbag clearing
+   - Prefetch deletion
+
+---
+
+Agar biron bir qadamda aniq command yoki tahlil misoli kerak bo‘lsa, yozing. Har bir muammo (log tozalangan, USN o‘chirilgan, rootkit) bo‘yicha qo‘shimcha yordam berishim mumkin.
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+## 5-vazifa (Linux): Izlarni yashirishga urinishlarni aniqlash
+
+Linux muhitida (jonli tizim yoki disk image) izlarni yashirishga urinishlarni aniqlash uchun quyidagi kompleks yondashuv kerak. Anti-forensics texnikalarini erta aniqlash – Blue Team uchun muhim ko‘nikma.
+
+---
+
+### 1. ROOTKIT ORQALI PROCESS/FILE YASHIRISHNI ANIQLASH
+
+**Muammo**: Rootkit kernel darajasida process, fayl, tarmoq ulanishlarini ps, ls, netstat kabi standart vositalardan yashiradi.
+
+**Instrumentlar**: `unhide`, `chkrootkit`, `rkhunter`, `volatility3` (memory dump bo‘lsa)
+
+**Amaliy qadamlar (jonli tizim):**
+```bash
+# Unhide bilan yashirin processlarni topish
+sudo apt install unhide -y
+sudo unhide proc          # /proc va ps ni solishtirish
+sudo unhide sys           # system call va ps ni solishtirish
+sudo unhide brute         # PID ni bruteforce qilish
+sudo unhide-tcp           # yashirin tarmoq portlari
+
+# Chkrootkit - tezkor rootkit skaneri
+sudo apt install chkrootkit -y
+sudo chkrootkit | tee /var/log/chkrootkit.log
+# /var/log/chkrootkit.log da "INFECTED" so‘zini qidiring
+
+# Rkhunter - chuqurroq rootkit skaneri
+sudo apt install rkhunter -y
+sudo rkhunter --update
+sudo rkhunter --check --skip-keypress | tee /var/log/rkhunter.log
+# Warninglarni tekshiring: grep -i warning /var/log/rkhunter.log
+```
+
+**Disk image bo‘lsa**: Obrazni mount qilib, `unhide` ni `--root` parametri bilan ishlating:
+```bash
+sudo unhide --root /mnt/linux_image proc
+```
+
+**Memory dump bo‘lsa** (Volatility 3):
+```bash
+vol3 -f memory.raw linux.pslist          # normal processlar
+vol3 -f memory.raw linux.psscan          # yashirin processlar (key)
+vol3 -f memory.raw linux.modscan         # yashirin kernel modullar
+vol3 -f memory.raw linux.malfind         # injected code
+```
+
+**Ko‘rsatkichlar**: `ps` va `unhide` chiqishi farq qiladi; `rkhunter`da "Warning" chiqadi; `/proc` da PID bor lekin `ps` da ko‘rinmasa.
+
+---
+
+### 2. LOG TOZALASH VA HISTORY MANIPULYATSIYASINI ANIQLASH
+
+**Muammo**: Buzg‘unchi `/var/log` dagi fayllarni o‘chiradi, `history -c` bilan bash history tozalaydi, yoki `/dev/null` ga symlink qiladi.
+
+**Instrumentlar**: `auditd`, `journalctl`, `grep`, `diff`, `ls -la`
+
+**Amaliy qadamlar (auditd bilan monitoring):**
+```bash
+# auditd o‘rnatish
+sudo apt install auditd audispd-plugins -y
+sudo systemctl start auditd
+sudo systemctl enable auditd
+
+# Log o‘chirishni kuzatish uchun qoidalar
+sudo auditctl -w /var/log -p wa -k log_deletion
+sudo auditctl -w /var/log/auth.log -p wa -k auth_log
+sudo auditctl -w /var/log/syslog -p wa -k syslog
+
+# Qoidalarni tekshirish
+sudo auditctl -l
+
+# O‘chirish urinishlarini ko‘rish
+sudo ausearch -k log_deletion -i
+sudo ausearch -k auth_log -i | grep -E "delete|unlink|truncate"
+```
+
+**History tozalashni aniqlash (bash_history):**
+```bash
+# .bash_history bo‘sh yoki faqat bir necha qator bo‘lsa
+for user in /home/*; do
+    echo "=== $user ==="
+    wc -l $user/.bash_history 2>/dev/null
+    tail -5 $user/.bash_history 2>/dev/null
+done
+# root uchun
+wc -l /root/.bash_history 2>/dev/null
+
+# history -c ishlatilganligini auditd orqali
+sudo ausearch -k shell_history -i 2>/dev/null || echo "audit rule not set"
+```
+
+**Systemd journal tozalashni aniqlash:**
+```bash
+# Journal hajmi va mavjudligi
+journalctl --list-boots
+du -sh /var/log/journal/
+
+# Agar journal kutilmaganda kichik bo‘lsa - shubha
+# Tozalash eventi (agar logged bo‘lsa)
+journalctl -g "journal.*cleared|vacuum"
+```
+
+**Ko‘rsatkichlar**: Log fayllari kutilganidan kichik; `ls -la /var/log/` da modified time juda yaqin; `audit.log` da `unlink` syscall qayd etilgan; `.bash_history` da `history -c` yoki bo‘sh fayl.
+
+---
+
+### 3. TIMESTOMPING (FILE TIMESTAMP MANIPULYATSIYASI)
+
+**Muammo**: Buzg‘unchi `touch -t`, `touch -d`, yoki `Set-ItemProperty` (Linux da `touch`) bilan fayl vaqtlarini o‘zgartiradi.
+
+**Instrumentlar**: `debugfs`, `stat`, `find`, `extundelete`, `icat` (sleuthkit)
+
+**Amaliy qadamlar (disk image yoki mount qilingan fayl tizimida):**
+```bash
+# MFT (ext4 da "inode") vaqtlarini tekshirish
+sudo apt install sleuthkit -y
+
+# Inode raqamini topish
+ls -li /path/to/suspicious_file
+
+# Inode tafsilotlari (ext4)
+sudo debugfs -R "stat <inode_number>" /dev/sdX
+```
+
+**Vaqt anomaliyalarini aniqlash (ext4):**
+- `debugfs stat` chiqishida `crtime` (creation time), `mtime`, `atime`, `ctime` ko‘rinadi .
+- Agar `crtime` `mtime` dan keyin bo‘lsa – timestamp o‘zgartirilgan.
+- Bir necha faylning vaqtlari bir xil sekundga teng bo‘lsa – mass timestomping.
+
+**Timestompingni aniqlash uchun timeline yaratish:**
+```bash
+# Plaso bilan timeline yaratish
+log2timeline --parsers linux timeline.plaso /mnt/linux_mount
+psort -o l2tcsv timeline.plaso > timeline.csv
+
+# timeline.csv da vaqt ketma-ketligini tekshirish
+grep -E "touch|date|timestomp" timeline.csv
+```
+
+**Ko‘rsatkichlar**: MFT da `crtime` > `mtime`; bir necha faylning `mtime`lari bir xil sekund; `ctime` (`stat` da "Change") `mtime` dan farq qiladi (metadata o‘zgargan).
+
+---
+
+### 4. USN JOURNAL (ext4 da "Journal") TOZALASHNI ANIQLASH
+
+**Muammo**: Buzg‘unchi ext4 journal yoki NTFS USN journalni o‘chirib, fayl operatsiyalari tarixini yo‘qotadi.
+
+**Instrumentlar**: `debugfs`, `fsck.ext4`, `dumpe2fs`, `journalctl` (systemd journal)
+
+**Amaliy qadamlar:**
+```bash
+# Journal mavjudligini tekshirish
+sudo dumpe2fs /dev/sdX | grep -i journal
+
+# Journal o‘chirilganligi (agar fsck talab qilsa)
+sudo fsck.ext4 -n /dev/sdX 2>&1 | grep -i journal
+
+# ext4 journal holati
+sudo debugfs -R "stat <8>" /dev/sdX   # <8> - journal inode odatda
+```
+
+**NTFS bo‘lsa (agar Linux tahlil qilayotgan bo‘lsa):**
+```bash
+sudo ntfsinfo -m /dev/sdX | grep -i journal
+# USN o‘chirilgan bo‘lsa, Event ID 3079 qayd etiladi (Windows loglarida)
+```
+
+**Ko‘rsatkichlar**: `dumpe2fs` da "Journal inode: none"; `fsck` "recovery required" chiqarsa; Windows image bo‘lsa Event ID 3079 mavjud.
+
+---
+
+### 5. FAYLLARNI "XAVFSIZ" O‘CHIRISH (SHRED, WIPE) IZLARI
+
+**Muammo**: Buzg‘unchi `shred`, `wipe`, `dd` bilan fayllarni qayta tiklanmasligi uchun o‘chiradi .
+
+**Instrumentlar**: `auditd`, `ausearch`, `grep`, `history`
+
+**Amaliy qadamlar:**
+```bash
+# auditd qoidasi: shred, wipe, dd kabilarni kuzatish
+sudo auditctl -a always,exit -F arch=b64 -S execve -F exe=/usr/bin/shred -k shred_exec
+sudo auditctl -a always,exit -F arch=b64 -S execve -F exe=/usr/bin/wipe -k wipe_exec
+sudo auditctl -a always,exit -F arch=b64 -S execve -F exe=/usr/bin/dd -k dd_exec
+
+# Loglarni ko‘rish
+sudo ausearch -k shred_exec -i
+sudo ausearch -k wipe_exec -i
+sudo ausearch -k dd_exec -i
+
+# Shell history da qidirish
+grep -r "shred\|wipe\|dd if=/dev/zero" /home/*/.bash_history /root/.bash_history 2>/dev/null
+```
+
+**Ko‘rsatkichlar**: Audit logda `shred` yoki `wipe` execve qaydi; fayl MFT da mavjud lekin data bloklari nol bilan to‘ldirilgan.
+
+---
+
+### 6. ALTERNATE DATA STREAMS (ADS) VA HIDDEN FILES
+
+**Muammo**: Linux da ADS yo‘q, lekin "dot files" (`.` bilan boshlanadigan) yoki `chattr +h` bilan fayllar yashiriladi.
+
+**Instrumentlar**: `ls -la`, `find`, `lsattr`, `chattr`
+
+**Amaliy qadamlar:**
+```bash
+# Dot fayllarni topish
+find / -name ".*" -type f -ls 2>/dev/null | grep -vE "/proc|/sys|/home/.*/\.(bash|config|profile|cache)"
+
+# Hidden attribute tekshirish (ext4)
+lsattr /path/to/suspicious 2>/dev/null
+# 'h' attribute - hidden file
+
+# Yashirin fayllarni ko‘rsatish (attribute)
+find / -type f -exec lsattr {} \; 2>/dev/null | grep -E "^....h"
+```
+
+**Ko‘rsatkichlar**: `.` bilan boshlanadigan fayl normal fayl tizimida; `lsattr` da `h` attribute.
+
+---
+
+### 7. AUTO LOGGER / ETW (EVENT TRACING) – LINUX ALTERNATIVASI
+
+Windows’dagi `AutoLogger-Diagtrack-Listener.etl` ga o‘xshash Linux da **auditd** va **systemd-journald** yashirin artefaktlarni saqlaydi.
+
+**Amaliy qadamlar:**
+```bash
+# auditd loglari – o‘chirilgan fayllar haqida ma’lumot
+sudo ausearch -m PATH -i | grep -E "delete|unlink"
+sudo ausearch -m SYSCALL -i -s unlink
+
+# systemd journal – agar persistent bo‘lsa
+journalctl --list-boots
+journalctl -g "deleted|removed|unlink" --since "2025-01-01"
+
+# /var/log/messages da o‘chirish izlari
+grep -i "deleted\|removed" /var/log/messages /var/log/syslog 2>/dev/null
+```
+
+---
+
+### 8. MAKSIMAL BALL UCHUN DETEKSIYA STRATEGIYASI
+
+| Bosqich | Harakat | Vaqt | Ball ulushi |
+|---------|--------|------|-------------|
+| 1 | `unhide`, `chkrootkit`, `rkhunter` bilan rootkit skaneri | 10 min | 25% |
+| 2 | `auditd` loglarida `unlink`, `shred`, `wipe` qidirish | 10 min | 20% |
+| 3 | `.bash_history` tozalanganligi va `history -c` izlari | 5 min | 15% |
+| 4 | `debugfs` bilan MFT timestamp anomaliyalari (crtime vs mtime) | 10 min | 15% |
+| 5 | Journal (ext4 journal / USN) mavjudligi va o‘chirilganligi | 5 min | 10% |
+| 6 | `find` va `lsattr` bilan yashirin fayllar | 5 min | 10% |
+| 7 | `journalctl` va `syslog` da o‘chirish izlari | 5 min | 5% |
+
+---
+
+### 9. BLUE TEAM SIFATIDA XAVFSIZLIKNI TA’MINLASH
+
+**1. Auditd ni doimiy yoqish va markaziy loglash:**
+```bash
+# /etc/audit/rules.d/10-delete-monitor.rules
+-w /var/log -p wa -k log_deletion
+-w /etc/passwd -p wa -k passwd_mod
+-a always,exit -F arch=b64 -S unlink,unlinkat,rename,renameat -k file_deletion
+-a always,exit -F arch=b64 -S execve -F exe=/usr/bin/shred -k anti_forensics
+```
+
+**2. Shell history ni immutable qilish (append only):**
+```bash
+# /etc/profile da
+export HISTTIMEFORMAT="%F %T "
+export HISTSIZE=10000
+export HISTFILESIZE=20000
+readonly HISTFILE
+```
+
+**3. Loglarni remote syslog / SIEM ga yuborish:**
+```bash
+# /etc/rsyslog.d/50-default.conf
+*.* @192.168.1.100:514
+```
+
+**4. Integrity checking (AIDE / Tripwire):**
+```bash
+sudo aideinit
+sudo aide --check
+```
+
+**5. Kernel module signing (modprobe):**
+```bash
+# only signed modules allowed
+echo "1" > /proc/sys/kernel/modules_disabled
+```
+
+---
+
+### 10. KERAKLI INSTRUMENTLAR RO‘YXATI (LINUX)
+
+| Instrument | Vazifa | O‘rnatish |
+|------------|--------|-----------|
+| `unhide` | Yashirin process/port detection | `apt install unhide` |
+| `chkrootkit` | Rootkit skaneri | `apt install chkrootkit` |
+| `rkhunter` | Rootkit Hunter | `apt install rkhunter` |
+| `auditd` | File/process auditing | `apt install auditd` |
+| `ausearch` | Audit log qidirish | auditd bilan birga |
+| `debugfs` | ext4 inode tahlili | `apt install e2fsprogs` |
+| `sleuthkit` | Forensics (icat, fls, mmls) | `apt install sleuthkit` |
+| `volatility3` | Memory dump tahlili | `pip install volatility3` |
+| `aide` | File integrity | `apt install aide` |
+| `rsyslog` | Remote logging | `apt install rsyslog` |
+
+---
+
+Agar biron bir qadamda aniq command yoki tahlil misoli kerak bo‘lsa, yozing. Jonli tizim yoki disk image bo‘yicha qo‘shimcha yordam berishim mumkin.

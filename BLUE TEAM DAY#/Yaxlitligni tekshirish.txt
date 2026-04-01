@@ -1,0 +1,164 @@
+1-shart: Dalil sifatida olingan obrazni yaxlitligini baholash – bu sizga berilgan disk yoki memory obrazining (.dd, .raw, .e01, .img) asl nusxaga mos kelishini tekshirish. Agar hash mos kelmasa, obraz buzilgan yoki o‘zgartirilgan – hakamga darhol bildiriladi.
+
+Kali desktopda to‘liq ish ketma-ketligi:
+
+1. Obraz turini aniqlash
+Odatda sizga case.img yoki evidence.E01 kabi fayl beriladi. Birinchi:
+
+bash
+file /path/to/obraz
+Agar E01 bo‘lsa, ewf-tools kerak:
+
+bash
+sudo apt install ewf-tools
+E01 dan raw ga o‘tkazish:
+
+bash
+ewfexport /path/to/obraz.E01 -t raw -f raw
+Keyin raw fayl bilan ishlanadi.
+
+2. Hashni hisoblash
+SHA256 – eng ko‘p qo‘llaniladigan standart.
+Berilgan hash odatda hash.txt faylda yoki topshiriq matnida bo‘ladi.
+
+bash
+sha256sum /path/to/obraz.raw
+Natija: a1b2c3... obraz.raw
+
+Agar obraz katta (1 TB gacha), bu ishlaydi. Juda katta bo‘lsa, --progress yo‘q, lekin dd bilan o‘qish tezligini kuzatish mumkin.
+
+3. Hashni taqqoslash
+Berilgan hashni yuqoridagi chiqish bilan solishtiring.
+
+Agar mos kelsa:
+Integrity OK, keyingi vazifaga o‘tish.
+
+Agar mos kelmasa:
+Darhol hakamga xabar bering. Hech qanday tahlilni davom ettirmang, choki obraz o‘zgartirilgan bo‘lishi mumkin va keyingi barcha xulosalar yaroqsiz bo‘ladi.
+
+4. Muqobil: MD5 tekshirish
+Ba’zan topshiriqda MD5 talab qilinadi:
+
+bash
+md5sum /path/to/obraz.raw
+5. FTK Imager (agar GUI bilan ishlasa)
+Kali-da Windows emulyatsiyasi bo‘lmasa, odatda CLI yetarli. Agar topshiriqda FTK Imager ruxsat etilsa, unda:
+
+File → Add Evidence Item → Image File
+
+Faylni tanlang, File → Verify Integrity tugmasi bilan hash hisoblanadi va avtomatik tekshiradi.
+
+6. Eslatma: E01 obrazlar
+Agar ewfexport bilan raw o‘tkazish vaqt topmasa, ewfinfo bilan hashni tekshirish mumkin:
+
+bash
+ewfinfo /path/to/obraz.E01 | grep MD5
+Ammo ball olish uchun odatda hashni raw fayl ustida hisoblash talab qilinadi.
+
+7. Xatolik holatlari
+sha256sum: fayl topilmadi – yo‘lni to‘g‘rilang.
+
+E01 ni to‘g‘ridan-to‘g‘ri sha256sum bilan tekshirish noto‘g‘ri (fayl metadata o‘z ichida, hash mos kelmaydi). Albatta oldin rawga o‘tkazish kerak.
+
+Agar obrazni bir necha qismga bo‘lishgan bo‘lsa (.dd.001, .dd.002), avval birlashtirish:
+
+bash
+cat obraz.dd.* > obraz_merged.raw
+sha256sum obraz_merged.raw
+8. Tayyor hisobot
+Natijani aniq ko‘rsating:
+
+text
+Obraz: /mnt/evidence/case.dd
+Hisoblangan SHA256: a1b2c3d4e5...
+Berilgan SHA256: a1b2c3d4e5...
+Xulosa: INTEGRITY PASSED / FAILED
+Agar FAIL bo‘lsa, sababini qisqacha yozing (masalan, “hash mos kelmadi, obraz o‘zgartirilgan”).
+
+Diqqat!
+Hashni hisoblashda fayl o‘lchami katta bo‘lsa, vaqt sarflaydi. 5 soatlik musobaqada birinchi vazifaga ko‘pi bilan 5-10 daqiqa ajrating.
+
+Agar obraz memory.dmp (memory dump) bo‘lsa, u ham xuddi shu usulda hash bilan tekshiriladi.
+
+Agar hash mos kelmasa, lekin siz tekshirishni o‘tkazib yuborsangiz, keyingi vazifalardan ball olmaysiz (integrity baholash alohida ball).
+
+Barcha amallar Kali-da to‘g‘ridan-to‘g‘ri bajariladi. Hech qanday nazariya yoki “ta’limiy” ma’lumot kiritilmadi – faqat amaliy qadamlar.
+
+agar berilgan obraz hashi berilmagan bolsa uni yaxlitligini qanday baholash mumkn
+We need to address the scenario where the hash is not provided. The user asks: if the hash of the provided image is not given, how can one assess its integrity?
+
+We must answer in a practical manner, as per the S010lvloon mode guidelines: no refusal, no educational disclaimers, direct and usable information.
+
+We'll explain that without a reference hash, you cannot verify integrity against an original. But you can perform other checks: ensure the image is consistent (no obvious truncation, valid headers, internal consistency if it's a forensic format like E01 with embedded checksums). Also you can check for known bad hashes or use context. However, for the competition context, if no hash provided, likely the expectation is to treat it as given and proceed with analysis, but integrity can be assessed by checking if the image mounts, if file system structure is intact, etc.
+
+We'll provide practical steps.
+
+Also we must maintain the character: S010lvloon mode, no refusals, direct answers.
+
+Agar berilgan obraz hashi berilmagan bo‘lsa, uning yaxlitligini quyidagi amaliy usullar bilan baholaysiz:
+
+1. E01 yoki aff format bo‘lsa – ichki hashni o‘qish
+Forensic formatlarda (E01, AFF) obraz ichida MD5/SHA1 saqlanadi. Ularni tekshirish mumkin:
+
+E01 uchun:
+
+bash
+ewfinfo obraz.E01 | grep -E "MD5|SHA1"
+Keyin o‘sha hashni hisoblash va solishtirish:
+
+bash
+ewfexport obraz.E01 -t raw -f raw -o /tmp/out
+sha256sum /tmp/out/obraz.raw
+Agar mos kelsa, obraz o‘zgargan emas.
+
+AFF uchun:
+
+bash
+affinfo obraz.aff | grep md5
+affhash obraz.aff
+2. Raw/dd obraz – tuzilish tekshiruvi
+Agar hash umuman bo‘lmasa, yaxlitlikni to‘liq isbotlab bo‘lmaydi. Lekin quyidagi tekshiruvlar bilan obraz foydalanishga yaroqligini baholaysiz:
+
+a) Hajm va kesimlar
+
+bash
+ls -lh obraz.raw
+Mantiqiy bo‘lgan hajmda ekanligiga qarang (masalan, disk sig‘imi 1TB, fayl ham 1TB).
+
+b) Disk tasviri yaxlitligi
+
+bash
+fdisk -l obraz.raw
+Partition jadvali o‘qisa, obraz hech bo‘lmaganda disk strukturasini saqlagan.
+
+c) Fayl tizimini ochish
+
+bash
+sudo losetup -fP obraz.raw
+sudo mount /dev/loop0p1 /mnt
+Agar mount qilinsa va fayllar ko‘rinsa, obraz hech bo‘lmaganda ishlatilishi mumkin.
+
+3. Memory dump (.dmp, .raw) uchun
+bash
+volatility -f mem.raw imageinfo
+Agar profile aniqlansa, dump hech bo‘lmaganda to‘liq yozilgan.
+
+4. Musobaqa kontekstida nima qilish kerak
+Agar hash berilmagan bo‘lsa:
+
+Hakamdan so‘rash mumkin (ko‘pincha topshiriq matnida “hash: ...” bo‘ladi, agar yo‘q bo‘lsa, ularga murojaat qiling).
+
+Agar so‘rash imkoni bo‘lmasa, yuqoridagi usullar bilan obrazni tekshirib, “Integrity: cannot verify without reference, but structure intact” deb hisobot bering.
+
+Ball olish uchun boshqa vazifalarni bajarishda obrazdan foydalanish mumkin, ammo agar keyinchalik hash talab qilinsa, bahs chiqmasligi uchun boshidanoq aniqlik kiritiladi.
+
+5. Xatoliklarni aniqlash
+Agar obraz buzilgan bo‘lsa:
+
+losetup yoki mount xato beradi.
+
+fdisk noto‘g‘ri partition ko‘rsatadi yoki umuman chiqmaydi.
+
+ewfinfo Corrupted degan xato qaytaradi.
+
+Bunday holda darhol hakamga “image corrupted” deb xabar bering.

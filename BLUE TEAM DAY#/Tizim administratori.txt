@@ -1,0 +1,552 @@
+3-vazifa: **Tizim administratori tomonidan yozib olingan tarmoq trafiklari orqali buzg‘unchining hatti-harakatlarini aniqlash (2000 ball)**
+
+Bu vazifa sizga `.pcap` yoki `.pcapng` fayl ko‘rinishida berilgan tarmoq trafigini tahlil qilishni talab qiladi. Buzg‘unchi C2 (Command & Control) server bilan aloqa qilgan, ma’lumot o‘g‘irlagan, lateral movement qilgan yoki tarmoq ichida skanerlagan bo‘lishi mumkin. Sizning vazifangiz – trafik ichidan anomaliyalarni topish, IOCs (Indicators of Compromise) chiqarish va buzg‘unchining harakatlarini rekonstruksiya qilish.
+
+---
+
+## 1. ASOSIY TUSHUNCHA: PCAP NIMA?
+
+PCAP (Packet Capture) – tarmoq orqali o‘tgan barcha paketlarning to‘liq yozuvi. Har bir paketda:
+- Aniq vaqt (timestamp)
+- Source IP, destination IP
+- Portlar
+- Protokol (TCP, UDP, ICMP, HTTP, DNS, TLS va b.)
+- Payload (agar shifrlanmagan bo‘lsa, fayl yoki buyruq)
+
+**Musobaqada sizga 3 turdagi PCAP berilishi mumkin:**
+1. **To‘liq capture** – barcha paketlar (eng ko‘p ma’lumot)
+2. **Filterlangan capture** – faqat ma’lum IP yoki port bo‘yicha
+3. **Zeek/Suricata loglari** – metadata (conn.log, http.log, dns.log) + original PCAP
+
+---
+
+## 2. TAHLIL BOSQICHLARI (KALI LINUX DA)
+
+### 2.1. Birinchi qarash – PCAP haqida umumiy ma’lumot
+
+```bash
+# Fayl hajmi, paket soni, vaqt oralig‘i
+capinfos capture.pcap
+
+# Protokol hierarxiyasi (qaysi protokol qancha)
+tshark -r capture.pcap -q -z io,phs
+
+# Eng ko‘p traffic yuborgan IP’lar (top talkers)
+tshark -r capture.pcap -q -z endpoints,ip
+
+# TCP conversationlar
+tshark -r capture.pcap -q -z conv,tcp
+```
+
+**Nimaga qaraysiz:**
+- Agar HTTPS (443) yoki DNS (53) juda ko‘p bo‘lsa – tunnelling bo‘lishi mumkin
+- Agar kutilmagan portlar (4444, 8080, 1337) ko‘p bo‘lsa – C2 portlari
+- Agar bitta IP ga juda ko‘p connection bo‘lsa – beaconing yoki exfiltration
+
+---
+
+### 2.2. DNS tahlili – DGA, tunnelling, C2 domain
+
+Buzg‘unchilar ko‘pincha DNS orqali C2 manzilini topadi yoki ma’lumot o‘g‘irlaydi.
+
+```bash
+# Barcha DNS query’lar
+tshark -r capture.pcap -T fields -e frame.time -e dns.qry.name -e dns.a -Y "dns.flags.response == 1"
+
+# DNS tunnelling (katta TXT yoki uzun subdomain)
+tshark -r capture.pcap -Y "dns.resp.type == 16 and dns.resp.len > 100"
+
+# DGA aniqlash – uzun va entropiyasi yuqori domainlar
+tshark -r capture.pcap -T fields -e dns.qry.name -Y "dns.flags.response == 0" | \
+  awk -F'.' '{print $1}' | while read sub; do
+    echo -n "$sub: "
+    echo $sub | grep -o . | sort | uniq -c | awk '{s+=($1*log($1))}END{print -s}'
+  done | awk '$2 > 3.5 {print}'
+```
+
+**Ko‘rsatkichlar:**
+- Uzun, tasodifiy ko‘rinishdagi subdomainlar → DGA
+- DNS TXT yoki MX recordlarida katta payload → DNS tunnelling
+- Bir necha marta so‘ralgan, lekin hech qachon resolv qilinmagan domainlar → DGA
+
+---
+
+### 2.3. HTTP/HTTPS tahlili – C2, payload download, exfiltration
+
+HTTP ko‘pincha C2 uchun ishlatiladi, chunki firewalllar odatda 80/443 ni ochiq qoldiradi.
+
+```bash
+# Barcha HTTP request’lar
+tshark -r capture.pcap -T fields \
+  -e frame.time -e ip.src -e ip.dst -e http.host \
+  -e http.request.method -e http.request.uri -e http.user_agent \
+  -Y "http.request"
+
+# POST data (exfiltration yoki C2 command)
+tshark -r capture.pcap -Y "http.request.method == POST" -V | grep -i "cmd\|exec\|whoami\|powershell"
+
+# Fayl download (exe, ps1, dll)
+tshark -r capture.pcap -Y "http.response and tcp.len > 10000" -T fields -e http.host -e http.request.uri
+
+# User-Agent anomaliyalari (normal brauzer emas)
+tshark -r capture.pcap -Y "http.request" -T fields -e http.user_agent | sort | uniq -c | sort -nr
+```
+
+**Ko‘rsatkichlar:**
+- `POST /gate.php?id=123456` kabi URI – C2 beacon
+- `User-Agent: Python-urllib`, `curl`, `Mozilla/5.0 (compatible; MSIE 10.0)` kabi g‘ayritabiiy agentlar
+- Katta response body (payload download)
+- `cmd=`, `exec=`, `powershell` kabi parametrlar
+
+**TLS/HTTPS uchun (shifrlangan):**
+```bash
+# SNI (Server Name Indication) – qaysi domainga ulangan
+tshark -r capture.pcap -T fields -e tls.handshake.extensions_server_name -Y "tls.handshake.type == 1"
+
+# JA3 fingerprint (malware TLS signature)
+tshark -r capture.pcap -T fields -e tls.handshake.ja3 -Y "tls.handshake.type == 1"
+```
+
+---
+
+### 2.4. Beaconing aniqlash – C2 ning muntazam aloqasi
+
+Malware odatda belgilangan intervalda C2 ga signal yuboradi (beacon).
+
+**Scapy bilan Python skript:**
+```python
+from scapy.all import rdpcap, IP, TCP
+from collections import defaultdict
+import statistics
+
+packets = rdpcap("capture.pcap")
+
+connections = defaultdict(list)
+for pkt in packets:
+    if IP in pkt and TCP in pkt:
+        if pkt[TCP].flags & 0x02:  # SYN flag
+            dst = f"{pkt[IP].dst}:{pkt[TCP].dport}"
+            connections[dst].append(float(pkt.time))
+
+for dst, times in connections.items():
+    if len(times) >= 5:
+        intervals = [times[i+1] - times[i] for i in range(len(times)-1)]
+        avg = statistics.mean(intervals)
+        stdev = statistics.stdev(intervals) if len(intervals) > 1 else 0
+        jitter = (stdev / avg * 100) if avg > 0 else 0
+        
+        if 10 < avg < 3600 and jitter < 30:
+            print(f"[!] {dst}: {len(times)} connections, interval: {avg:.1f}s ± {stdev:.1f}s")
+```
+
+**Ko‘rsatkichlar:**
+- Doimiy interval (masalan har 60 sekund)
+- Jitter (variatsiya) 30% dan kam
+- Paket hajmi kichik va doimiy
+
+---
+
+### 2.5. Suricata bilan IDS tekshiruvi
+
+Suricata oldindan tayyor qoidalar bilan PCAP ni skanerlaydi.
+
+```bash
+# Suricata o‘rnatish (agar yo‘q bo‘lsa)
+sudo apt install suricata
+
+# Emerging Threats qoidalarini yuklab olish
+sudo apt install oinkmaster
+echo "url = http://rules.emergingthreats.net/open/suricata/emerging.rules.tar.gz" >> /etc/oinkmaster.conf
+sudo oinkmaster -C /etc/oinkmaster.conf -o /etc/suricata/rules
+
+# PCAP ni tekshirish
+sudo suricata -r capture.pcap -c /etc/suricata/suricata.yaml -k none -v -l suricata_logs/
+
+# Chiqarilgan alertlarni ko‘rish
+cat suricata_logs/fast.log
+```
+
+Suricata sizga avtomatik ravishda C2, malware, port scan, exploit kabi anomaliyalarni ko‘rsatadi.
+
+---
+
+### 2.6. Zeek (Bro) bilan metadata yaratish
+
+Zeek PCAP dan struktur loglar chiqaradi: conn.log, http.log, dns.log, ssl.log, files.log.
+
+```bash
+sudo apt install zeek
+
+# PCAP dan loglar yaratish
+zeek -r capture.pcap
+
+# Chiqarilgan loglarni tekshirish
+cat conn.log | zeek-cut id.orig_h id.resp_h id.resp_p proto duration orig_bytes resp_bytes
+cat http.log | zeek-cut host uri method user_agent
+cat dns.log | zeek-cut query answers
+```
+
+Zeek loglari orqali:
+- Qaysi IP qancha traffic yuborgan
+- Qaysi domainlarga so‘rov bo‘lgan
+- Fayl transferlari (files.log)
+- TLS sertifikat ma’lumotlari
+
+---
+
+### 2.7. NetworkMiner – fayllarni tiklash va artefaktlar
+
+NetworkMiner PCAP dan avtomatik fayllarni, credentiallarni, imagelarni chiqaradi.
+
+```bash
+# Kali da yuklab olish
+wget https://www.netresec.com/?download=NetworkMiner
+unzip NetworkMiner_*.zip
+cd NetworkMiner_*
+mono NetworkMiner.exe  # GUI versiya
+```
+
+Yoki CLI:
+```bash
+# Agar Linux versiyasi bo‘lsa
+./NetworkMiner -r capture.pcap -o ./extracted_files/
+```
+
+NetworkMiner sizga:
+- Barcha HTTP, FTP, SMB orqali transfer qilingan fayllarni tiklaydi
+- Credentiallarni (login/password) chiqaradi
+- DNS query’larni jadval ko‘rinishida beradi
+
+---
+
+### 2.8. Xplico – to‘liq framework
+
+Xplico ko‘p protokollarni tahlil qilib, email, http content, voip larni ajratadi.
+
+```bash
+# O‘rnatish
+sudo apt install xplico
+
+# Ishga tushirish
+sudo /etc/init.d/apache2 restart
+sudo /etc/init.d/xplico start
+# Browserda localhost:9876 (xplico:xplico)
+```
+
+GUI orqali case yaratib, PCAP yuklaysiz, Xplico avtomatik parse qiladi.
+
+---
+
+## 3. MAXIMAL BALL UCHUN STRATEGIYA
+
+| Vaqt | Harakat | Maqsad |
+|------|--------|--------|
+| 0-5 min | `capinfos`, `tshark -z io,phs`, `tshark -z endpoints,ip` | PCAP hajmini, protokollarni, asosiy IP larni tushunish |
+| 5-15 min | `tshark -Y "http.request"`, `tshark -Y "dns.flags.response"` | HTTP va DNS anomaliyalarini topish |
+| 15-25 min | Suricata skan | Avtomatik IDS alertlari |
+| 25-35 min | Zeek loglari + `conn.log` tahlili | Connection duration, bytes, IP correlation |
+| 35-45 min | NetworkMiner / Xplico | Fayllarni tiklash, credential extraction |
+| 45-55 min | Beacon detection (scapy) | C2 beaconing pattern |
+| 55-60 min | Hisobot yig‘ish | IOCs, timeline, attack reconstruction |
+
+---
+
+## 4. DETECT QILINADIGAN TTP’LAR
+
+| TTP | Qanday topiladi |
+|-----|---------------|
+| **C2 Beaconing** | `tshark -z conv,tcp` + interval analysis; doimiy interval, kichik paket |
+| **DNS Tunnelling** | DNS query length > 100, TXT recordda payload |
+| **DGA** | Uzun, tasodifiy subdomainlar; entropy > 3.5 |
+| **Payload Download** | HTTP response body katta, exe/ps1/dll extension |
+| **Exfiltration** | Katta POST request, DNS TXT recordda data, FTP/SMB transfer |
+| **Lateral Movement** | SMB (445), RDP (3389), WinRM (5985/5986) traffic; auth loglari |
+| **Port Scan** | Ko‘p SYN paketlar, destination portlar ketma-ket, no response |
+| **Credential Theft** | HTTP basic auth, FTP login, telnet password plaintext |
+| **Log Clearing** | Event log service stop, wevtutil command in HTTP/User-Agent |
+
+---
+
+## 5. KERAKLI INSTRUMENTLAR RO‘YXATI
+
+| Instrument | Vazifa | Kali-da mavjud |
+|------------|--------|---------------|
+| `tshark` | CLI packet analysis | Ha |
+| `capinfos` | PCAP metadata | Ha |
+| `tcpdump` | Capture va filter | Ha |
+| `zeek` (Bro) | Metadata loglar | `sudo apt install zeek` |
+| `suricata` | IDS skan | `sudo apt install suricata` |
+| `NetworkMiner` | File extraction, credential | Yuklab olish kerak |
+| `Xplico` | Full forensic framework | `sudo apt install xplico` |
+| `scapy` | Python packet manipulation | `pip install scapy` |
+| `ngrep` | Grep for packets | `sudo apt install ngrep` |
+| `strings` | Payload ichidan text | Ha |
+
+---
+
+## 6. AMALIY MISOL (HAQIQIY MUSOBAQADAN)
+
+Sizga `traffic.pcap` berilgan. Siz quyidagi savollarga javob topishingiz kerak bo‘ladi:
+
+1. **Attacker IP qaysi?**
+   ```bash
+   tshark -r traffic.pcap -T fields -e ip.src | sort | uniq -c | sort -nr
+   ```
+   Eng ko‘p traffic yuborgan IP – attacker yoki compromised host.
+
+2. **C2 server IP yoki domain?**
+   ```bash
+   tshark -r traffic.pcap -Y "http.request" -T fields -e http.host | sort | uniq -c
+   ```
+
+3. **Qanday fayl yuklangan?**
+   ```bash
+   tshark -r traffic.pcap --export-objects http,./http_files/
+   sha256sum ./http_files/*
+   ```
+
+4. **Qanday credentiallar o‘g‘irlangan?**
+   ```bash
+   tshark -r traffic.pcap -Y "http.request.method == POST" -V | grep -i "user\|pass\|login"
+   ```
+
+5. **Beaconing interval qancha?**
+   Yuqoridagi scapy script bilan hisoblang.
+
+6. **Attack timeline qanday?**
+   ```bash
+   tshark -r traffic.pcap -T fields -e frame.time -e ip.src -e ip.dst -Y "http.request" | head -20
+   ```
+
+---
+
+## 7. MUAMMOLAR VA BARTARAF
+
+| Muammo | Bartaraf |
+|--------|----------|
+| PCAP juda katta (10GB+) | `tshark -r file.pcap -Y "filter" -w small.pcap` bilan filtrlab, kichik fayl yarating |
+| HTTPS shifrlangan | SNI, JA3, sertifikat ma’lumotlarini tahlil qiling; payloadni ko‘ra olmaysiz, lekin connection pattern muhim |
+| PCAPNG formati | `tshark -r file.pcapng -w file.pcap` bilan eski formatga o‘tkazing |
+| Header buzilgan | `pcapfix` bilan tuzating: `pcapfix broken.pcap -o fixed.pcap` |
+| Ko‘p false positive | Suricata qoidalarini tuning qiling; faqat external IP larga connectionlarni tekshiring |
+
+---
+
+## 8. HISOBOTGA YOZILADIGAN IOCs
+
+1. **Network IOCs:**
+   - Malicious IPs
+   - Malicious domains
+   - JA3 fingerprints
+   - URL paths
+   - User-Agent strings
+
+2. **File IOCs:**
+   - Downloaded file hashes (SHA256)
+   - File names
+
+3. **Behavioral:**
+   - Beaconing interval
+   - Data exfiltration size
+   - Lateral movement paths
+
+4. **Timeline:**
+   - First malicious packet timestamp
+   - Payload download time
+   - C2 communication times
+   - Log clearing attempt time
+
+---
+
+Har bir instrumentni Kali-da sinab ko‘rish imkoniyati bo‘lmasa ham, kamida `tshark` + `zeek` + `suricata` kombinatsiyasi 2000 ballning 80% ini olib beradi. Asosiy narsa – IOCs ni aniq va tez chiqarish.
+
+Agar biron qadamda aniq command kerak bo‘lsa yoki PCAP misolida yordam kerak bo‘lsa, so‘rang – darhol yozib beraman.
++++++++++++++++++++++++++++++++++++++++++++++++++++
+3-vazifa (tarmoq trafigi tahlili) bo‘yicha **qanday muhitda ishlayotganingizga qarab** amaliy qadamlar. Siz Kali desktop’ga ega ekanligingizni aytdingiz, shuning uchun asosiy yo‘nalish Kali bo‘ladi. Ammo agar jonli Windows yoki disk image bilan ishlasangiz, har bir holat alohida ko‘rsatilgan.
+
+---
+
+## 1. MUHITNI ANIQLASH
+
+| Sizda nima bor | Qanday ish tutasiz |
+|----------------|-------------------|
+| **Kali Linux (jonli)** | To‘g‘ridan-to‘g‘ri terminalda `tshark`, `zeek`, `suricata`, `NetworkMiner` (mono bilan) ishlatasiz. |
+| **Windows (jonli)** | Wireshark GUI, NetworkMiner, CapLoader, `tshark` (Wireshark bilan birga), PowerShell bilan `Get-NetTCPConnection` kabi yordamchi buyruqlar. |
+| **Disk image** (E01, dd, raw, vmdk) | Avval obrazni mount qilib, ichidan PCAP faylni chiqarib olasiz. Keyin tahlilni Kali yoki Windows da davom ettirasiz. |
+
+---
+
+## 2. KALI LINUX (JONLI) – STANDART USUL
+
+Agar siz to‘g‘ridan-to‘g‘ri Kali da ishlayotgan bo‘lsangiz va PCAP fayl (masalan `traffic.pcap`) mavjud bo‘lsa:
+
+### 2.1. Asosiy tahlil (tshark)
+```bash
+# Umumiy ma’lumot
+capinfos traffic.pcap
+
+# Protokol statistikasi
+tshark -r traffic.pcap -q -z io,phs
+
+# Eng ko‘p traffic yuborgan IP’lar
+tshark -r traffic.pcap -q -z endpoints,ip
+
+# HTTP request’larni ko‘rish
+tshark -r traffic.pcap -Y "http.request" -T fields -e frame.time -e ip.src -e http.host -e http.request.uri
+```
+
+### 2.2. Zeek (Bro) – metadata loglari
+```bash
+# Zeek o‘rnatilganligini tekshiring
+sudo apt install zeek -y
+
+# PCAP dan loglar yaratish
+zeek -r traffic.pcap
+
+# chiqqan fayllar: conn.log, http.log, dns.log, ssl.log ...
+cat conn.log | zeek-cut id.orig_h id.resp_h proto duration orig_bytes resp_bytes
+```
+
+### 2.3. Suricata – IDS signaturalari
+```bash
+sudo apt install suricata -y
+
+# Qoidalarni yangilash (Emerging Threats)
+sudo suricata-update
+
+# PCAP ni skanerlash
+sudo suricata -r traffic.pcap -k none -l suricata_logs/
+
+# Alertlarni ko‘rish
+cat suricata_logs/fast.log
+```
+
+### 2.4. NetworkMiner – fayllarni ajratish (GUI)
+```bash
+# Yuklab olish
+wget https://www.netresec.com/?download=NetworkMiner -O NetworkMiner.zip
+unzip NetworkMiner.zip
+cd NetworkMiner_*
+mono NetworkMiner.exe   # GUI
+```
+GUI da `File > Open` orqali PCAP ni oching. `Files` tabida yuklangan fayllar, `Credentials` da login/parollar chiqadi.
+
+CLI versiya (agar mavjud):
+```bash
+./NetworkMiner -r ../traffic.pcap -o ./extracted/
+```
+
+### 2.5. Xplico (to‘liq web framework)
+```bash
+sudo apt install xplico -y
+sudo /etc/init.d/apache2 start
+sudo /etc/init.d/xplico start
+```
+Brauzerda `http://localhost:9876` (login: xplico, parol: xplico). Yangi case yaratib, PCAP yuklang – Xplico avtomatik parse qiladi.
+
+---
+
+## 3. WINDOWS (JONLI) – ALTERNATIV USUL
+
+Agar siz Windows mashinasida ishlayotgan bo‘lsangiz va PCAP fayl mavjud bo‘lsa:
+
+### 3.1. Wireshark (GUI)
+- Wireshark ni yuklab oling (https://www.wireshark.org/).
+- `File > Open` bilan PCAP ni oching.
+- Filtr yozish: `http.request`, `dns.qry.name`, `ip.src==192.168.1.100`
+- `Statistics` menyusidan `Conversations`, `Endpoints`, `Protocol Hierarchy` dan foydalaning.
+
+### 3.2. tshark (komanda satri)
+Wireshark o‘rnatilganda `tshark` ham keladi. Komanda satrida:
+```cmd
+tshark -r traffic.pcap -Y "http.request" -T fields -e frame.time -e ip.src -e http.host
+```
+
+### 3.3. NetworkMiner (Windows)
+- Yuklab oling: https://www.netresec.com/?page=NetworkMiner
+- ZIP ni ochib, `NetworkMiner.exe` ni ishga tushiring.
+- `File > Open` -> PCAP ni tanlang. Avtomatik fayllar, credential, DNS chiqadi.
+
+### 3.4. PowerShell yordamchi buyruqlar
+```powershell
+# Agar jonli tizimda tarmoq ulanishlarini tekshirish kerak bo‘lsa
+Get-NetTCPConnection | Where-Object {$_.State -eq "Established"} | Select LocalAddress,LocalPort,RemoteAddress,RemotePort
+```
+
+### 3.5. CapLoader (C2 beacon aniqlash)
+- CapLoader – bu Windows dasturi (https://www.netresec.com/?page=CapLoader).
+- PCAP ni yuklab, `Beacon` tabida avtomatik beaconlarni topadi.
+
+---
+
+## 4. DISK IMAGE ICHIDAGI PCAP
+
+Agar sizga disk image (E01, dd, raw, vmdk) berilgan bo‘lsa va PCAP fayl shu image ichida (masalan `C:\captures\traffic.pcap`) bo‘lsa:
+
+### 4.1. Image ni mount qilish (Kali)
+
+**E01 fayl:**
+```bash
+sudo ewfmount image.E01 /mnt/ewf
+```
+`/mnt/ewf/ewf1` – bu raw image.
+
+**Raw/dd fayl:**
+```bash
+sudo fdisk -lu image.raw   # partitsiya offset ni topish
+# Masalan: start sector = 2048, sektor hajmi 512 -> offset = 2048*512 = 1048576
+sudo mount -o ro,loop,offset=1048576 image.raw /mnt/win
+```
+
+**VMDK:**
+```bash
+sudo modprobe nbd
+sudo qemu-nbd -c /dev/nbd0 image.vmdk
+sudo mount /dev/nbd0p1 /mnt/win
+```
+
+### 4.2. PCAP faylni qidirish
+```bash
+find /mnt/win -name "*.pcap" -o -name "*.pcapng" 2>/dev/null
+```
+Agar topilsa, masalan `/mnt/win/Users/Admin/Desktop/capture.pcap` bo‘lsa, uni `/tmp` ga ko‘chiring:
+```bash
+cp /mnt/win/Users/Admin/Desktop/capture.pcap /tmp/
+```
+
+### 4.3. Tahlilni davom ettirish
+Endi fayl Kali da mavjud, yuqoridagi Kali usullarini (tshark, zeek, suricata, NetworkMiner) qo‘llaysiz.
+
+### 4.4. Agar image ichida Windows bo‘lsa va siz Windows asboblari bilan tahlil qilmoqchi bo‘lsangiz
+Image ni Windows virtual mashinaga mount qilishingiz mumkin (masalan VMware Workstation da .vmdk ni to‘g‘ridan-to‘g‘ri qo‘shish). Keyin Windows ichida Wireshark, NetworkMiner bilan tahlil.
+
+---
+
+## 5. MAKSIMAL NATIJA UCHUN UMUMIY TAVSIYALAR
+
+| Muhit | Eng tez usul | Chuqur tahlil uchun |
+|-------|-------------|---------------------|
+| **Kali (live)** | `tshark -Y "http.request"` + `zeek` | Suricata + NetworkMiner + scapy beacon detection |
+| **Windows (live)** | Wireshark GUI + NetworkMiner | CapLoader + PowerShell event log correlation |
+| **Image** | Avval mount, keyin Kali usullari | Agar image katta bo‘lsa, faqat PCAP ni chiqarib, qolganini tahlil qilmaslik |
+
+**Muhim eslatma:** Agar sizga faqat PCAP berilgan bo‘lsa, siz Kali da ishlaysiz. Agar PCAP image ichida bo‘lsa, avval mount qilishingiz kerak. Agar jonli tizimda tarmoq trafigi real-time kuzatilayotgan bo‘lsa, `tcpdump` bilan capture olishingiz mumkin:
+```bash
+sudo tcpdump -i eth0 -w live_capture.pcap
+```
+
+---
+
+## 6. KERAKLI PAKETLARNI O‘RNATISH (KALI)
+
+Agar kali da ba’zi vositalar yo‘q bo‘lsa:
+```bash
+sudo apt update
+sudo apt install tshark wireshark zeek suricata xplico ewf-tools nbd-client -y
+pip install scapy
+```
+NetworkMiner va CapLoader ni alohida yuklab olish kerak.
+
+---
+
+Agar biron bir qadamda aniq command yoki muammo yuz bersa, yozing – darhol yordam beraman.

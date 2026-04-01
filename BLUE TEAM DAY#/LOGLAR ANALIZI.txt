@@ -1,0 +1,576 @@
+1. Tizimning asosiy ma’lumotlarini olish
+Agar jonli tizim bo‘lsa:
+
+bash
+hostname
+whoami
+id
+uptime
+date
+uname -a
+cat /etc/os-release
+Agar disk obraz bo‘lsa, avval mount qilib oling (yoki lsblk, fdisk bilan tahlil).
+
+2. Foydalanuvchilar va loginlar
+Jonli tizim:
+
+bash
+last -n 50           # muvaffaqiyatli loginlar
+lastb -n 50          # muvaffaqiyatsiz loginlar
+cat /etc/passwd | grep -E "sh$|bash$"  # shellga ega userlar
+Obrazda:
+Mount qilingan /etc/passwd, /var/log/auth.log, /var/log/secure fayllarini tekshiring.
+
+Muammo: last fayllari tozalangan bo‘lishi mumkin.
+Bartaraf: /var/log/wtmp, /var/log/btmp fayllarini utmpdump bilan ko‘ring:
+
+bash
+utmpdump /var/log/wtmp
+3. Jarayonlar (processlar)
+Jonli tizim:
+
+bash
+ps auxf --sort=-%mem | head -30
+ps auxf --sort=-%cpu | head -30
+ss -tunap | grep ESTABLISHED
+lsof -i
+Muammo: Rootkit processlarni yashirishi mumkin.
+Bartaraf: unhide yoki rkhunter bilan tekshirish:
+
+bash
+sudo unhide proc
+sudo rkhunter --check --skip-keypress
+Shuningdek, ps chiqishini /proc bilan solishtiring:
+
+bash
+ls -d /proc/[0-9]* | wc -l
+ps aux | wc -l
+Farq katta bo‘lsa – yashirish bor.
+
+4. Avtomatik ishga tushadigan joylar
+Linux:
+
+bash
+systemctl list-unit-files --state=enabled
+crontab -l -u root
+for user in $(cut -f1 -d: /etc/passwd); do crontab -l -u $user 2>/dev/null; done
+ls -la /etc/rc*.d/
+ls -la /etc/systemd/system/multi-user.target.wants/
+ls -la ~/.config/autostart/
+Muammo: Persistence mekanizmlari ko‘p, birini o‘tkazib yuborish mumkin.
+Bartaraf: autossh, systemd timer, anacron, @reboot cron, rc.local – hammasini alohida tekshirish.
+
+5. Loglardan shubhali faoliyat
+bash
+grep -i "failed\|invalid\|unauthorized" /var/log/auth.log | tail -50
+grep -i "accepted" /var/log/auth.log | grep -v "session opened"
+grep -i "sudo" /var/log/auth.log | tail -30
+journalctl -xe | grep -i "error\|fail\|malicious"
+Muammo: Loglar rotatsiya qilingan bo‘lsa, eski loglarni ham ko‘rish kerak:
+
+bash
+zcat /var/log/auth.log.*.gz | grep -i failed
+6. Fayl tizimidagi anomaliyalar
+Yaxta va o‘zgartirilgan fayllar:
+
+bash
+find / -type f -mtime -1 -ls 2>/dev/null | head -50
+find / -type f -perm -4000 -ls 2>/dev/null   # SUID
+find / -type f -name ".*" -ls 2>/dev/null    # yashirin fayllar
+Muammo: /tmp, /dev/shm da yashirilgan fayllar ko‘pincha e’tibordan chetda qoladi.
+
+bash
+ls -la /tmp /dev/shm /var/tmp
+7. Tarmoq ulanishlari va listening xizmatlar
+bash
+ss -tulwn
+netstat -tulwn
+iptables -L -n -v
+Muammo: Reverse shell yoki backdoor porti ochiq bo‘lishi mumkin. lsof -i bilan qaysi process eshitayotganini aniqlang.
+
+Duch kelinadigan asosiy muammolar va bartaraf
+Muammo	Belgilari	Bartaraf etish
+Loglar tozalangan	auth.log kichik, last qisqa chiqadi	/var/log/audit/audit.log (agar auditd bor bo‘lsa), journalctl --since "2 days ago"; agar fayl tizimi image bo‘lsa, log2timeline bilan timeline qilish
+Process yashirish	ps va /proc soni farq qiladi	unhide yoki volatility (memory dump bo‘lsa)
+Cron yoki systemd timerlari ko‘p	ko‘rinmaydigan persistence	systemd-analyze blame; ls /etc/systemd/system/*.timer; cat /etc/crontab va /etc/cron.d/*
+Shubhali fayl nomlari	normal nomlar ostida yashirilgan (masalan bash, httpd aslida emas)	md5sum ni tekshirish, rkhunter bilan fayl hash solishtirish
+Rootkit	lsmod da yashirin modul, ps ishlamay qoladi	chkrootkit, rkhunter, volatility bilan memorydan modul tekshirish
+O‘chirilgan processlar	faqat loglarda iz qolgan	grep -i "killed|stopped" /var/log/syslog; journalctl -u unknown
+Minimal tekshiruv ro‘yxati (600 ballni to‘plash uchun)
+User enumeration – qo‘shimcha user, sudo guruhidagilar, nologin emas.
+
+Login anomaliyalari – ko‘p marta failed login, geographic anomaliya (agar IP log qayd etilgan bo‘lsa).
+
+Process anomaliyalari – nomi yoki pathi g‘ayrioddiy, yuqori CPU/IO, yashirin.
+
+Persistence – crontab, systemd, rc.local, ssh authorized_keys da qo‘shimcha kalitlar.
+
+Tarmoq – kutilmagan portda listening, bekorchi tashqi ulanishlar.
+
+Fayl tizimi – yangi SUID binary, /tmp da executable, ~/.ssh da g‘ayritabiiy fayllar.
+
+Log tekshiruvi – deletion eventlari (ID 1102 Windows, Linuxda history -c, rm /var/log kabi izlar).
+
+Musobaqada tez harakat qilish strategiyasi
+Birinchi 5-10 daqiqada linPEAS yoki linux-exploit-suggester kabi skriptlarni ishga tushiring – ular avtomatik ko‘p tekshiruvlarni bajaradi.
+
+Keyin qo‘lda yuqoridagi ro‘yxatdagi eng muhim nuqtalarni tekshiring.
+
+Agar Windows bo‘lsa, winPEAS, Seatbelt, SharpHound (AD bo‘lsa) tezda ishga tushiriladi.
+
+Topilmalarni qisqa faylga yozib boring: suspicious_users.txt, suspicious_processes.txt, suspicious_cron.txt – hisobotga tayyor bo‘ladi.
+
+Hech qanday “ta’limiy” ma’lumot berilmagan, faqat amaliy qadamlar va muammolarni hal qilish. Har bir vositani to‘g‘ridan-to‘g‘ri Kali-da ishlatish mumkin.
+
+Agar biron qadamda tushunmagan joy bo‘lsa, aniq so‘rang, darhol kerakli commandni yozaman.
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Windows muhiti – jonli tizim yoki disk image – uchun **dastlabki shubhali faoliyatni aniqlash** (600 ball) bo‘yicha to‘liq amaliy qo‘llanma. Barcha instrumentlar Kali Linux yoki Windows-da ishlatishga tayyor.
+
+---
+
+## 1. JONLI WINDOWS TIZIMI
+
+Sizga Windows mashinasiga ruxsat berilgan (fizik yoki RDP). Tez harakat qilish kerak.
+
+### 1.1. Qo‘lda tekshirish (PowerShell administrator sifatida)
+
+**Foydalanuvchilar va guruhlar**
+```powershell
+Get-LocalUser | Where-Object {$_.Enabled -eq $true} | Select Name,LastLogon
+Get-LocalGroupMember Administrators
+net user
+net localgroup administrators
+```
+**Shubhali:** yaqinda yaratilgan user, administrator guruhidagi kutilmagan account.
+
+**Jarayonlar**
+```powershell
+Get-Process | Sort-Object -Property CPU -Descending | Select -First 20
+Get-Process | Where-Object {$_.Path -like "*Temp*" -or $_.Path -like "*Users*"}
+tasklist /v
+```
+**Shubhali:** nomi `svchost.exe` bo‘lib pathi noto‘g‘ri, `powershell.exe` yoki `cmd.exe` g‘ayritabiiy parametrlar bilan ishlayotgan bo‘lsa.
+
+**Tarmoq ulanishlari**
+```powershell
+netstat -ano | findstr ESTABLISHED
+Get-NetTCPConnection | Where-Object {$_.State -eq "Established"} | Select LocalAddress,LocalPort,RemoteAddress,RemotePort,OwningProcess
+```
+**Shubhali:** kutilmagan tashqi IP, anonim portlar, `443` portga ulangan process nomi notanish.
+
+**Avtomatik ishga tushadigan joylar**
+```powershell
+Get-CimInstance Win32_StartupCommand | Select Name,Command,Location
+Get-ScheduledTask | Where-Object {$_.State -ne "Disabled"} | Select TaskName,TaskPath,State
+Get-Service | Where-Object {$_.StartType -eq "Auto" -and $_.Status -eq "Running"}
+```
+**Shubhali:** `C:\Users\Public` yoki `%TEMP%` dan ishga tushadigan task, g‘ayritabiiy service nomi.
+
+**Event loglar (Security, System)**
+```powershell
+# Muvaffaqiyatsiz loginlar
+Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4625} -MaxEvents 50 | Select-Object TimeCreated, Message
+# Muvaffaqiyatli loginlar
+Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4624} -MaxEvents 50 | Select-Object TimeCreated, Message
+# Log tozalash
+Get-WinEvent -FilterHashtable @{LogName='Security'; ID=1102,104} -MaxEvents 20
+# Service install
+Get-WinEvent -FilterHashtable @{LogName='System'; ID=7045} -MaxEvents 30
+```
+**Shubhali:** bir necha IP dan bir necha marta failed login, log tozalash hodisalari, kutilmagan vaqtda service install.
+
+**Fayl tizimi**
+```powershell
+Get-ChildItem C:\Users -Recurse -File -ErrorAction SilentlyContinue | Where-Object {$_.LastWriteTime -gt (Get-Date).AddDays(-1)} | Select FullName,LastWriteTime
+Get-ChildItem C:\Windows\Temp, C:\Temp, C:\Users\*\AppData\Local\Temp -Recurse -File -ErrorAction SilentlyContinue | Where-Object {$_.Extension -in '.exe','.dll','.ps1','.bat','.vbs'}
+```
+**Shubhali:** yaqinda o‘zgartirilgan fayllar, temp papkalaridagi executable.
+
+**Registry persistence**
+```powershell
+reg query HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+reg query HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+reg query HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce
+reg query HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce
+reg query HKLM\SYSTEM\CurrentControlSet\Services
+```
+
+---
+
+### 1.2. Sysinternals (Kali-da Windows bo‘lmasa, sizga Windows mashinasida ishlatish uchun)
+
+Agar jonli Windows mashinasida ishlayotgan bo‘lsangiz, `Sysinternals` to‘plamini yuklab oling va ishlating:
+
+- **Autoruns** – barcha persistence mekanizmlarni bir ko‘rinishda chiqaradi.
+  ```cmd
+  autoruns.exe -a -c > autoruns.csv
+  ```
+- **Process Explorer** – process va ularning parent-child munosabati, TCP ulanishlar.
+- **TCPView** – barcha tarmoq ulanishlar real-time.
+- **PsExec** – agar siz remote mashinada ishlayotgan bo‘lsangiz, `psexec \\computer cmd` bilan kirish.
+- **Sigcheck** – fayllar raqamli imzosini tekshirish (shubhali fayl normal nom bilan bo‘lsa).
+
+---
+
+### 1.3. Tezkor skript (winPEAS)
+
+Kali-da `winPEAS` ni yuklab olib, Windows mashinasiga ko‘chiring, administrator sifatida ishga tushiring:
+```cmd
+winPEASx64.exe > output.txt
+```
+Bu barcha qo‘lda tekshiriladigan narsalarni avtomatik yig‘adi, jumladan:
+- users, processes, network, services, scheduled tasks, registry, installed software, etc.
+- rangli belgilar bilan shubhali joylarni ajratib ko‘rsatadi.
+
+---
+
+### 1.4. Muammolar va bartaraf
+
+| Muammo | Belgilari | Bartaraf |
+|--------|-----------|----------|
+| PowerShell yoki CMD bloklangan | `Get-Process` ishlamaydi | `wmic process list full` yoki `tasklist`; ba’zi komandalar bilan `wmic` dan foydalaning. |
+| Antivirus aralashadi | winPEAS bloklanadi | Fayl nomini o‘zgartiring, `-exclude` bilan ishga tushiring yoki `Windows Defender` ni vaqtincha o‘chiring (agar ruxsat bo‘lsa). |
+| Event loglar tozalangan | `Get-WinEvent` hech narsa chiqarmaydi | `wevtutil qe Security /f:text /c:10` bilan eski eventlarni ko‘ring; agar log fayllari o‘chirilgan bo‘lsa, `C:\Windows\System32\winevt\Logs` da fayllar qoldig‘i borligini tekshiring. |
+| Process yashirish | `tasklist` da ko‘rinmaydi, lekin port ulanishi bor | `netstat -ano` bilan PID ni toping, keyin `tasklist /fi "PID eq XXXX"` – agar ko‘rinmasa, rootkit. `GMER` yoki `Process Hacker` bilan tekshiring. |
+| Registry persistence ko‘rinmaydi | HKCU\Software\Microsoft\Windows\CurrentVersion\Run o‘chirilgan bo‘lishi mumkin | `reg query` bilan yana `RunOnce`, `Userinit`, `Shell`, `AppInit_DLLs` kabi kalitlarni tekshiring. |
+
+---
+
+## 2. WINDOWS DISK IMAGE (Forensics)
+
+Sizga `.dd`, `.raw`, `.e01`, `.vmdk` kabi disk obraz berilgan. Kali Linux-da tahlil qilishingiz kerak.
+
+### 2.1. Obrazni mount qilish
+
+**E01 uchun:**
+```bash
+sudo ewfmount /path/to/image.E01 /mnt/ewf
+```
+`/mnt/ewf/ewf1` fayli – bu raw image.
+
+**Raw image (.dd/.raw):**
+```bash
+sudo mkdir /mnt/win_mount
+sudo mount -o ro,loop,offset=XXXX /path/to/image.raw /mnt/win_mount
+```
+Offset ni topish:
+```bash
+fdisk -l /path/to/image.raw   # partitsiyalarni ko‘rsatadi, offset = start * 512
+```
+Yoki `mmls` (sleuthkit):
+```bash
+mmls image.raw
+```
+Windows partitsiyasi (NTFS) offset ni topib mount qiling.
+
+Agar VMDK bo‘lsa:
+```bash
+sudo modprobe nbd
+sudo qemu-nbd -c /dev/nbd0 image.vmdk
+sudo mount /dev/nbd0p1 /mnt/win
+```
+
+---
+
+### 2.2. Registry tahlili
+
+Registry hives: `C:\Windows\System32\config` da:
+- `SYSTEM`, `SOFTWARE`, `SAM`, `SECURITY`, `DEFAULT`
+- Users: `C:\Users\<username>\NTUSER.DAT`
+
+**Kali-da `regripper`** (yoki `registry-tools`):
+```bash
+sudo apt install regripper
+rip -r SYSTEM -p system > system.txt
+```
+**`Registry Explorer`** (GUI) – Windows-da ishlash uchun; Kali-da wine bilan ishlatish mumkin.
+
+**Amaliy tekshiruvlar:**
+- **SAM** – foydalanuvchilar va ularning oxirgi login vaqti.
+- **SYSTEM** – CurrentControlSet, Services, last known good.
+- **SOFTWARE** – installed programs, autoruns (Microsoft\Windows\CurrentVersion\Run).
+- **NTUSER.DAT** – user-specific persistence, browser history, typed paths.
+
+---
+
+### 2.3. Event loglar
+
+Windows event log fayllari: `C:\Windows\System32\winevt\Logs` da `.evtx` formatida.
+
+**Kali-da `evtx_dump` (python-evtx)**
+```bash
+sudo apt install python3-evtx
+evtx_dump Security.evtx > security.txt
+```
+Yoki `libevtx-utils`:
+```bash
+evtxexport Security.evtx ./output/
+```
+
+**Qidiriladigan IDlar:**
+- 4624, 4625 – login success/failure
+- 1102, 104 – log tozalash
+- 7045 – service installation
+- 4698 – scheduled task created
+- 4103 – PowerShell logging (agar enabled bo‘lsa)
+- 200, 201 – WMI event filter/consumer
+
+---
+
+### 2.4. Fayl tizimi artefaktlari
+
+**Prefetch** (`C:\Windows\Prefetch`):
+```bash
+ls -la /mnt/win/Windows/Prefetch/
+```
+`PECMD` yordamida tahlil: `prefetch-parser.py` (python) – Kali-da mavjud emas, lekin yuklab olish mumkin. Har bir exe ishga tushirilgan vaqt va necha marta ishga tushirilganini ko‘rsatadi.
+
+**Amcache** (`C:\Windows\AppCompat\Programs\Amcache.hve`):
+```bash
+regripper -r Amcache.hve -p amcache > amcache.txt
+```
+Ushbu fayldan o‘chirilgan bo‘lsa ham exe ishga tushirilgan vaqt, path topiladi.
+
+**MFT (Master File Table)** – fayl tizimidagi har bir fayl metadata:
+```bash
+icat image.raw partition_offset > mft.dd
+```
+Keyin `analyzeMFT` (python) bilan tahlil:
+```bash
+analyzeMFT.py -f mft.dd -o mft_output.csv
+```
+Bu fayllar yaratilgan, o‘zgartirilgan, o‘chirilgan vaqtlarni beradi. Shubhali vaqt oralig‘ida yaratilgan fayllarni aniqlash mumkin.
+
+**$LogFile, $USNJournal** – NTFS journal – o‘chirilgan fayllar nomlari, operatsiyalar.
+
+---
+
+### 2.5. Memory dump (agar alohida berilgan bo‘lsa)
+
+Agar Windows memory dump (.dmp, .raw) ham berilgan bo‘lsa, **Volatility 3** bilan tahlil:
+
+```bash
+sudo apt install volatility3
+vol3 -f mem.raw windows.pslist
+vol3 -f mem.raw windows.netscan
+vol3 -f mem.raw windows.malfind
+vol3 -f mem.raw windows.cmdline
+vol3 -f mem.raw windows.filescan | grep -i "exe\|dll\|ps1"
+```
+**Muammo:** profile avtomatik aniqlanadi. Agar topmasa, `windows.info` bilan tekshiring.
+
+---
+
+### 2.6. Muammolar va bartaraf (image tahlilida)
+
+| Muammo | Belgilari | Bartaraf |
+|--------|-----------|----------|
+| Image mount bo‘lmaydi | `mount` xato qaytaradi | `fsck.ntfs` bilan tekshiring; agar MFT buzilgan bo‘lsa, `ntfsfix` (faqat read-only) |
+| Registry hive korrupt | `regripper` xato beradi | `chntpw` bilan `-e` parametr bilan ochishga urinib ko‘ring; yoki Windows VM da `regedit` bilan mount qiling |
+| Event log fayllari o‘chirilgan | `evtx_dump` hech narsa chiqarmaydi | `C:\Windows\System32\winevt\Logs` da fayllar borligini tekshiring; agar bo‘sh bo‘lsa, `ntfsundelete` bilan tiklashga urinib ko‘ring |
+| Fayl tizimi shifrlangan | `mount` error: unknown filesystem | Agar BitLocker bo‘lsa, recovery key kerak; musobaqada ko‘pincha beriladi yoki shifrlanmagan image beriladi |
+| Prefetch yoki Amcache yo‘q | `Prefetch` papkasi bo‘sh | Windows 10/11 da Prefetch enabled bo‘lishi kerak, agar bo‘lmasa, `EnablePrefetcher` registry kalitini tekshiring |
+
+---
+
+## 3. MAKSIMAL NATIJA UCHUN STRATEGIYA
+
+### Jonli Windows:
+1. `winPEAS` ishga tushiring, natijani saqlang.
+2. PowerShell bilan `Get-WinEvent` yordamida security event loglarni tekshiring (4624, 4625, 1102, 7045).
+3. `netstat -ano` bilan g‘ayritabiiy ulanishlarni PID bilan toping.
+4. `Get-Process` bilan suspicious processlar (yashirin, temp da joylashgan).
+5. `Get-ScheduledTask` va `Get-CimInstance Win32_StartupCommand` bilan persistence.
+6. `reg query` bilan Run, RunOnce kalitlari.
+
+### Disk image:
+1. Obrazni mount qiling.
+2. Registry hives chiqarib oling: `SAM`, `SYSTEM`, `SOFTWARE`, `NTUSER.DAT`.
+3. `regripper` bilan har bir hive ni tahlil qiling.
+4. Event loglarni `.evtx` fayllardan chiqarib, 4624, 4625, 1102, 7045 kabi ID larni grep qiling.
+5. Prefetch, Amcache, MFT, USNJournal artefaktlarini tekshiring.
+6. Agar memory dump bo‘lsa, Volatility bilan process, network, cmdline, filescan.
+
+---
+
+## 4. QO‘SHIMCHA INSTRUMENTLAR
+
+| Instrument | Qachon ishlatiladi | Kali-da mavjudmi |
+|------------|-------------------|------------------|
+| **winPEAS** | Windows live tekshiruv | Yo‘q (yuklab olish kerak) |
+| **Autoruns** | Windows live persistence | Yo‘q (Sysinternals) |
+| **regripper** | Registry tahlili | Ha (`regripper`) |
+| **evtx_dump** | .evtx fayllarni o‘qish | Ha (`python3-evtx`) |
+| **analyzeMFT** | MFT tahlili | Ha (`analyzemft` – Kali da `mft2csv` nomi bilan mavjud) |
+| **volatility3** | Memory dump tahlili | Ha (`volatility3`) |
+| **sleuthkit** | Fayl tizimi tahlili (fls, icat, mmls) | Ha |
+| **ewf-tools** | E01 obrazlarni ochish | Ha |
+| **qemu-nbd** | VMDK, VHD obrazlarni mount | Ha |
+
+Har bir vosita to‘g‘ridan-to‘g‘ri ish bajaradi. Agar biron qadamda aniq command yoki yechim kerak bo‘lsa, so‘rang.
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+2-vazifa (dastlabki shubhali faoliyatni aniqlash) bo‘yicha maksimal ball olish uchun standart tekshiruvlardan tashqari quyidagi chuqur tahlil usullarini ham qo‘llashingiz kerak. Barcha instrumentlar Kali yoki Windows muhitida to‘g‘ridan-to‘g‘ri ishlaydi.
+
+1. SYSLOG + EVENTLOG CHUQUR TAHLILI
+Standart security loglar yetarli emas. Agar tizimda Sysmon yoki PowerShell logging yoqilgan bo‘lsa, bu juda qimmatli artefaktlar.
+
+1.1. Sysmon (Windows live yoki image)
+Sysmon loglari Microsoft-Windows-Sysmon/Operational da saqlanadi. Ularni tahlil qilish uchun:
+
+Hayabusa (Kali-da yoki Windows-da) – yaponiyalik threat hunting tool:
+
+bash
+git clone https://github.com/Yamato-Security/hayabusa
+cd hayabusa
+./hayabusa-2.2.0-linux-x64-gnu -d /mnt/win/Windows/System32/winevt/Logs/ -o results.csv
+Bu barcha .evtx fayllarni Sigma qoidalari bilan tekshirib, shubhali eventlarni chiqaradi.
+
+Chainsaw (yana bir threat hunting):
+
+bash
+./chainsaw hunt /mnt/win/Windows/System32/winevt/Logs/ -s sigma_rules/ --mapping mappings/sysmon.yml
+DeepBlueCLI (PowerShell script, Windows live uchun):
+
+powershell
+.\DeepBlue.ps1 .\Security.evtx
+1.2. PowerShell loglari
+PowerShell 5+ da Script Block Logging va Module Logging qoldiqlari:
+
+%SystemRoot%\System32\Winevt\Logs\Windows PowerShell.evtx
+
+Microsoft-Windows-PowerShell/Operational
+
+Evtxe yoki evtx_dump bilan chiqarib, ichidan -EncodedCommand, IEX, Invoke-Expression, DownloadString, -WindowStyle Hidden kabi kalitlarni grep qiling.
+
+2. MEMORY DUMP DAN MAXIMUM MA’LUMOT
+Agar memory dump berilgan bo‘lsa, Volatility 3 bilan standart pslist/netscan yetarli emas. Quyidagi pluginlarni ishlating:
+
+Yashirin processlar:
+
+bash
+vol3 -f mem.raw windows.psscan        # yashirin processlarni topadi
+vol3 -f mem.raw windows.malfind       # injected code
+vol3 -f mem.raw windows.modscan       # yashirin kernel driver
+vol3 -f mem.raw windows.handles       # process handles orqali persistence
+vol3 -f mem.raw windows.callbacks     # kernel callback rootkit
+vol3 -f mem.raw windows.ssdt          # SSDT hooklar
+Agar Cobalt Strike, Meterpreter yoki shu kabi framework ishlatilgan bo‘lsa:
+
+windows.malfind dan chiqqan MZ (PE) signaturelarini tekshiring.
+
+windows.dumpfiles bilan suspicious process memory dump oling va strings orqali C2 domainlarini qidiring.
+
+Network artifactlar:
+
+windows.netscan – connection, listener, pid.
+
+windows.netstat – eski versiyalarda.
+
+3. YARA SCAN – IMAGE VA MEMORY
+YARA qoidalari bilan ma’lum malware family yoki indicatorlarni tez topish mumkin.
+
+Fayl tizimida:
+
+bash
+git clone https://github.com/Yara-Rules/rules
+yara -r rules/malware_index.yar /mnt/win/Users
+yara -r rules/exploit_kits.yar /mnt/win/Windows/Temp
+Memory dumpda (Volatility bilan):
+
+bash
+vol3 -f mem.raw windows.vadinfo.YaraScan --yara-file rules/malware.yar
+4. NETWORK PCAP TAHLILI (agar berilgan bo‘lsa)
+Ba’zi musobaqalarda tarmoq trafigi (PCAP) ham beriladi. Ushbu trafikda C2 aloqalari, exfiltratsiya, lateral movement aniqlanadi.
+
+Zeek + RITA (Kali):
+
+bash
+zeek -r capture.pcap
+rita import zeek_logs/ rita_db
+rita show-exploded-dns rita_db
+Tshark bilan anomaliya:
+
+bash
+tshark -r capture.pcap -Y "dns.qry.name contains '.xyz'" -T fields -e dns.qry.name
+tshark -r capture.pcap -Y "http.request.uri contains '/api'" -T fields -e http.host -e http.request.uri
+Suricata bilan IDS qoidalarini ishga tushirib, anomaliyalarni avtomatik toping.
+
+5. MFT, USN JOURNAL, PREFETCH, AMCACHE – KORRELYATSIYA
+Fayl tizimi artefaktlarini bir-biriga bog‘lab, vaqt chizig‘i yarating.
+
+USN Journal – $UsnJrnl da fayl nomlari, o‘zgarish vaqtlari:
+
+bash
+sudo apt install ntfs-3g
+usnjrnl -m /dev/loop0p1
+yoki MFTEcmd (Windows) bilan chiqarib oling.
+
+Prefetch – prefetch-parser.py bilan har bir exe ishga tushirilgan vaqtni oling:
+
+bash
+python3 prefetch-parser.py /mnt/win/Windows/Prefetch/*.pf > prefetch.csv
+Amcache – regripper -p amcache bilan chiqarilgan fayllarni MFT va USN bilan solishtiring.
+
+Timeline yaratish – Plaso bilan barcha artefaktlarni birlashtiring:
+
+bash
+log2timeline --parsers win7 timeline.plaso /mnt/win
+pinfo timeline.plaso
+psort -o l2tcsv timeline.plaso > timeline.csv
+6. ROOTKIT DETEKSIYASI (LIVE WINDOWS)
+Agar jonli tizimda rootkit shubhasi bo‘lsa:
+
+GMER – hidden process, thread, service, registry, driverlarni topadi.
+
+TDSSKiller – Kaspersky’nin rootkit skaneri.
+
+Process Hacker – yashirin processlarni ko‘rish, handle va DLL larni tekshirish.
+
+Windows Defender Offline Scan – agar tizim kompromatatsiya qilingan bo‘lsa, offline skaner.
+
+7. LATERAL MOVEMENT VA PERSISTENCE
+Ushbu indicatorlar ham “dastlabki shubhali faoliyat” doirasiga kiradi, chunki buzg‘unchi bir tizimdan boshqasiga o‘tishga urinadi.
+
+PowerShell remoting eventlari (ID 4103, 4104):
+
+powershell
+Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-PowerShell/Operational'; ID=4104} | Where-Object {$_.Message -like "*Invoke-Command*" -or $_.Message -like "*New-PSSession*"}
+SMB / RDP loglari (Security ID 4624, Logon Type 3, 10):
+
+Logon Type 3 – network logon (SMB)
+
+Logon Type 10 – remote interactive (RDP)
+
+Scheduled task / WMI persistence:
+
+Event ID 4698 (task created), 4699 (task deleted)
+
+WMI event filter: Get-WMIObject -Namespace root\subscription -ClassName __EventFilter
+
+Service installation (ID 7045) da binary path i g‘ayritabiiy bo‘lsa (e.g., %TEMP%, C:\Users\Public).
+
+8. AVTOMATIK ANALIZ SCRIPTLARI
+Vaqtni tejash uchun bir necha skriptni parallel ishga tushiring:
+
+KAPE (Windows) – artefaktlarni tez yig‘adi va tahlil qiladi.
+
+Velociraptor – endpoint tekshiruvi, artifact collection.
+
+Cypher (Kali) – cypher-shell bilan threat hunting.
+
+9. MAKSIMAL BALL UCHUN STRATEGIYA (2-VAZIFA)
+5-10 daqiqa – winPEAS (live) yoki Hayabusa (image) bilan tez skan.
+
+10-20 daqiqa – MFT+Prefetch+Amcache timeline yaratib, vaqt oralig‘idagi anomaliyalarni belgilang.
+
+20-30 daqiqa – Memory dump (agar mavjud) da Volatility bilan psscan, malfind, netscan, modscan.
+
+30-40 daqiqa – Network PCAP (agar mavjud) da Zeek+Suricata bilan anomaliyalarni aniqlang.
+
+40-50 daqiqa – Sigma qoidalari bilan barcha eventloglarni qayta ishlang (Chainsaw).
+
+50-60 daqiqa – Topilmalarni hisobotga yozib, 2-vazifa bo‘yicha ballarni to‘liq oling.
+
+Har bir instrumentni sinab ko‘rish imkoniyati yo‘qligida, kamida 3 xil usul (log, fayl tizimi, memory) bilan topilmalarni mustahkamlang. Hakamga qancha ko‘p turdagi anomaliya topsangiz, ball shuncha yuqori.
+
+Agar biron bir usulni batafsil tushuntirish kerak bo‘lsa, aniq so‘rang – amaliy command bilan birga yozib beraman.

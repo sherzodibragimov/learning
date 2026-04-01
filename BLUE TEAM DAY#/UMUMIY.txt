@@ -1,0 +1,130 @@
+1. Dalil sifatida olingan obrazni yaxlitligini baholash (800 ball)
+Maqsad: Memory dump yoki disk image (.dd, .raw, .e01) faylning hashini tekshirish, butunligini tasdiqlash.
+
+md5sum / sha256sum (Linux) – obraz faylga nisbatan:
+
+bash
+sha256sum image.dd
+HashMyFiles (Windows) – GUI bilan bir nechta fayl hashini ko‘rsatadi.
+
+FTK Imager – obrazni ochib, hashni avtomatik hisoblaydi, integrity report yaratadi.
+
+dcfldd – dd ning kengaytirilgan versiyasi, yozishda hashni real-time hisoblaydi.
+
+Amaliy: Agar sizga obraz berilsa, birinchi qadam – berilgan hash bilan solishtirish. Agar mos kelmasa, darhol hakamga bildirish kerak.
+
+2. Dastlabki shubhali faoliyatni aniqlash (600 ball)
+Maqsad: Loglar, processlar, fayl tizimidagi anomaliyalarni tez topish.
+
+Linux – last, lastb, journalctl -xe, ausearch -m avc, grep "Failed password" /var/log/auth.log
+
+Windows – Get-WinEvent (PowerShell):
+
+powershell
+Get-WinEvent -LogName Security | Where-Object { $_.Id -eq 4625 }
+Sysinternals Autoruns – avtomatik ishga tushadigan joylarni tekshirish.
+
+OSQuery – SQL bilan process, open socket, user, file tekshirish.
+
+Velociraptor – tezkor endpoint tekshiruvlari uchun.
+
+3. Tizim administratori tomonidan yozib olingan tarmoq trafiklari orqali buzg‘unchining hatti-harakatlarini aniqlash (2000 ball)
+Maqsad: PCAP faylini tahlil qilib, anomaliya, C2, exfiltratsiya, port skanerlashni topish.
+
+Wireshark / tshark – filtrlash:
+
+bash
+tshark -r capture.pcap -Y "http.request.uri contains '/api'"
+Zeek (Bro) – metama’lumotlarni avtomatik chiqaradi:
+
+bash
+zeek -r capture.pcap
+NetworkMiner – fayllarni ajratib olish, host ma’lumotlarini ko‘rish.
+
+Rita – Zeek loglarini tahlil qilib, beaconing va domenlarni aniqlaydi.
+
+Snort / Suricata – rule asosida IDS tekshiruvi:
+
+bash
+suricata -r capture.pcap -S /etc/suricata/rules/local.rules
+Maksimal ball uchun: HTTP, DNS tunneling, unusual port, xorijiy IP, data transfer size kabi anomaliyalarni topish.
+
+4. Tizimda sodir bo‘lgan hodisalarni aniqlash (2900 ball)
+Maqsad: Incident response – kompromatatsiya vaqtini, qanday vektor, qanday fayllar, qanday user.
+
+Log2Timeline (Plaso) – super timestamp tayyorlash, timeline yaratish.
+
+Autopsy / Sleuth Kit – disk image tahlili, deleted fayllarni tiklash.
+
+Volatility (memory forensics):
+
+bash
+volatility -f mem.raw imageinfo
+volatility -f mem.raw --profile=Win10x64 pslist
+volatility -f mem.raw --profile=Win10x64 malfind
+volatility -f mem.raw --profile=Win10x64 netscan
+Redline – endpoint collector, GUI orqali tez tahlil.
+
+KAPE – Windows artefaktlarini tez yig‘ish va tahlil qilish.
+
+Maksimal ball uchun: Process injection, persistence, schtasks, registry, browser history, prefetch, event log correlation.
+
+5. Izlarni yashirishga urinishlarni aniqlash (1600 ball)
+Maqsad: Log cleaning, timestomping, alternate data streams, rootkitlar.
+
+Timestomp (Metasploit) – MACB vaqtlarini tahlil qilish.
+
+MFTECmd – $MFT tahlili, timestamp inconsistency.
+
+LADS / Streams (Sysinternals) – NTFS alternate data streamlarni topish.
+
+chkrootkit / rkhunter – Linux rootkit tekshiruvi.
+
+GMER – Windows rootkit detektori.
+
+Sigma rules – loglarda deletion, clearing event IDlarni aniqlash (event ID 1102, 104, 517).
+
+6. Messenjer token va sessiyalar (1200 ball)
+Maqsad: Telegram, Discord, WhatsApp, Signal kabi messenjerlardan token, session cookie, lokal ma’lumotlarni olish.
+
+Chrome / Edge – %LocalAppData%\Google\Chrome\User Data\Default\Local Storage da leveldb fayllar.
+
+DB Browser for SQLite – %AppData%\Telegram Desktop\tdata dagi *_key va *_data fayllarni ochish (encrypted).
+
+Hak5 payloadlar – tokenlarni dump qilish (musobaqada faqat o‘zingizga berilgan muhitda ishlatiladi).
+
+SharpWeb / SharpChromium – C# bilan brauzer cookie, login, tokenlarni yig‘ish.
+
+Mimikatz – sekurlsa::cookies yordamida session cookie chiqarish.
+
+Eslatma: Musobaqada messenjer tokenlarini topish uchun sizga disk image yoki memory dump berilishi mumkin. Volatility bilan iehistory yoki chrome plugini orqali topasiz.
+
+7. Veb-brauzer orqali saytlardagi ma’lumotlarni qo‘lga kiritish (900 ball)
+Maqsad: Browser history, cookies, saved passwords, bookmarks, download history.
+
+BrowsingHistoryView (NirSoft) – barcha brauzerlar historysini bitta jadvalda ko‘rsatadi.
+
+ChromeCacheView – cache dan fayllarni chiqaradi.
+
+Hindsight – Chrome/Edge history, downloads, bookmarks, autofill, session recovery.
+
+Firefox – %APPDATA%\Mozilla\Firefox\Profiles dagi places.sqlite, logins.json.
+
+Volatility plugin chromehistory – memory dumpdan history olish.
+
+Autopsy – browser artefacts moduli bilan bir vaqtda barcha brauzerlarni tekshiradi.
+
+Qisqacha, maksimal natija uchun strategiya
+Obraz integrity – birinchi daqiqada hashni tekshir.
+
+Timeline – Plaso bilan global timeline yarat, anomaliya vaqtini belgila.
+
+Memory – Volatility bilan process, network, injected code, registry key, console commandlarni chiqar.
+
+Network – Zeek + Suricata bilan PCAPdan protokollar, file extraction, beaconing top.
+
+Browser/messenjer – Hindsight, DB Browser, NirSoft vositalari bilan tez yig‘.
+
+Evasion – MFT va event loglarda vaqt o‘zgarishlari, deletionlarni tekshir.
+
+Har bir vosita to‘g‘ridan-to‘g‘ri ish bajaradi. Agar biron bir bosqichda aniq command kerak bo‘lsa, yozing, shu zahotiyoq yozib beraman.

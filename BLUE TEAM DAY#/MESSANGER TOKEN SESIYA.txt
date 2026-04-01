@@ -1,0 +1,686 @@
+## 6-vazifa (Windows): Messenjer token va sessiyalarni aniqlash (1200 ball)
+
+Windows tizimida (jonli yoki disk image) messenjer tokenlar, sessiya cookie’lar va autentifikatsiya ma’lumotlarini aniqlash — forensik tahlilning muhim qismi. Bu ma’lumotlar buzg‘unchining qaysi xizmatlarga kirganligini, qanday ma’lumotlarni o‘g‘irlaganligini va qanday hisoblarni kompromatatsiya qilganligini ko‘rsatadi.
+
+
+### 1. QAYERDAN QIDIRISH KERAK? (STORAGE LOCATIONS)
+
+**Browser cookie va tokenlar:**
+
+| Brauzer | Cookie fayl joylashuvi | Token/lokal storage |
+|---------|----------------------|---------------------|
+| **Chrome/Edge** | `%LocalAppData%\Google\Chrome\User Data\Default\Cookies` | `%LocalAppData%\Google\Chrome\User Data\Default\Local Storage\leveldb`  |
+| **Firefox** | `%AppData%\Mozilla\Firefox\Profiles\[profile]\cookies.sqlite` | `%AppData%\Mozilla\Firefox\Profiles\[profile]\webappsstore.sqlite`  |
+| **Brave** | `%LocalAppData%\BraveSoftware\Brave-Browser\User Data\Default\Cookies` | Shunga o‘xshash chromium-based  |
+
+**Messenjer tokenlar:**
+
+| Messenjer | Token/sessiya joylashuvi |
+|-----------|-------------------------|
+| **Telegram** | `%AppData%\Telegram Desktop\tdata\*_key`, `*_data` fayllar (encrypted) |
+| **Discord** | `%AppData%\discord\Local Storage\leveldb`; `%AppData%\discord\Cookies` |
+| **WhatsApp (Web)** | Brauzer cookie/lokal storage orqali |
+| **Signal (Desktop)** | `%AppData%\Signal\sql\db.sqlite` (encrypted) |
+| **Slack/Teams** | Brauzer cookie yoki desktop app lokal storage |
+
+**Windows sistemasi credentiallari:**
+
+| Credential turi | Joylashuvi | Izoh |
+|----------------|-----------|------|
+| **Windows Credentials** | `%UserProfile%\AppData\Roaming\Microsoft\Credentials\` | DPAPI bilan shifrlangan  |
+| **Windows Vault** | `%UserProfile%\AppData\Local\Microsoft\Vault\` | IE/Edge parollari, Windows Mail  |
+| **DPAPI master key** | `%UserProfile%\AppData\Roaming\Microsoft\Protect\` | SID bilan nomlangan  |
+
+
+### 2. ENG OPTIMAL INSTRUMENTLAR
+
+**2.1. NirSoft to‘plami (freeware, Windows) — tez va samarali**
+
+| Instrument | Vazifa | Muhim parametrlar |
+|------------|--------|-------------------|
+| **DataProtectionDecryptor** | DPAPI bilan shifrlangan ma’lumotlarni decrypt qilish (brauzer parollari, credential fayllar, wireless keylar) | External drive dan ishlatish uchun "Decrypt DPAPI data from external drive" va user password kerak  |
+| **CredentialsFileView** | Windows Credentials fayllarini decrypt qilish | Remote desktop, exchange, Windows Live credentiallari  |
+| **VaultPasswordView** | Windows Vault dan parollarni olish | IE10/11, Edge, Windows Mail credentiallari  |
+| **BrowsingHistoryView** | Barcha brauzerlar historysini bitta jadvalda | External drive: "Load history from specified profiles folder"  |
+| **IECookiesView / MozillaCookiesView** | Cookie fayllarni o‘qish | External drive: `/dir` parametri  |
+| **ChromeCacheView / MozillaCacheView** | Cache tahlili | External drive uchun `-folder` parametri |
+
+**2.2. Oxygen Forensic KeyScout (professional, multi-platform)**
+
+KeyScout — portable acquisition utility, Windows/macOS/Linux tizimlarini skanerlab, quyidagilarni chiqaradi :
+- Brauzer credential va tokenlar
+- 80+ messenjer app ma’lumotlari
+- Cloud service loginlar
+- Wi-Fi connectionlar
+- RAM data
+
+**Ishlatish tartibi:**
+1. KeyScout executable ni USB drive ga yozing
+2. Target tizimda ishga tushiring
+3. "Live System" profilini tanlang
+4. Kerakli app va artifactlarni belgilang
+5. `Start Search` — natijalarni `Save to Disk` 
+
+**2.3. Cookie-Monster (open-source, BOF/EXE)**
+
+Chrome, Edge, Firefox brauzerlaridan cookie va login data-larini yig‘ish uchun maxsus vosita .
+
+**Ishlatish (Windows):**
+```cmd
+# Barcha brauzerlarni skanerlash
+cookie-monster.exe --all
+
+# Chrome cookie va login data
+cookie-monster.exe --chrome
+
+# Edge
+cookie-monster.exe --edge
+
+# Firefox
+cookie-monster.exe --firefox
+```
+
+**Decrypt qilish:**
+```bash
+# Chrome/Edge cookie decrypt
+python decrypt.py "\xec\xfc...." --cookies ChromeCookie.db
+
+# Parollarni decrypt
+python decrypt.py "\xec\xfc...." --passwords ChromePasswords.db
+```
+
+**2.4. Binalyze Air / MD-RED (enterprise)**
+
+- **Binalyze Air** — cookie va lokal storage larni structured formatda yig‘adi 
+- **MD-RED** — Telegram, Teams, Slack kabi messenjerlarning PC versiyasidan ma’lumotlarni tahlil qiladi 
+
+
+### 3. TO‘LIQ QADAM-BAQADAM JARAYON (LIVE WINDOWS)
+
+**Step 1: Ma’lumotlarni yig‘ish**
+```powershell
+# Brauzer cookie fayllarni nusxalash
+robocopy "%LocalAppData%\Google\Chrome\User Data\Default" "D:\evidence\chrome" Cookies
+
+# Telegram tdata
+robocopy "%AppData%\Telegram Desktop\tdata" "D:\evidence\telegram" *.*
+
+# Discord lokal storage
+robocopy "%AppData%\discord\Local Storage" "D:\evidence\discord" leveldb
+
+# Windows credential fayllar
+robocopy "%UserProfile%\AppData\Roaming\Microsoft\Credentials" "D:\evidence\creds" *.*
+
+# Windows Vault
+robocopy "%UserProfile%\AppData\Local\Microsoft\Vault" "D:\evidence\vault" *.*
+```
+
+**Step 2: DPAPI bilan shifrlangan ma’lumotlarni decrypt qilish**
+```cmd
+# DataProtectionDecryptor ishlatish
+DataProtectionDecryptor.exe /external "D:\evidence\profile" "user_password"
+```
+
+**Step 3: Cookie va tokenlarni tahlil qilish**
+```cmd
+# BrowsingHistoryView bilan history va cookie larni biriktirish
+BrowsingHistoryView.exe /HistoryFolder "D:\evidence\chrome" /stab history.csv
+
+# CookieMonster bilan decrypt
+cookie-monster.exe --chrome
+python decrypt.py "master_key" --cookies cookies.db
+```
+
+**Step 4: SQLite brauzer bilan manual tekshirish (agar instrumental decrypt ishlamasa)**
+```bash
+# Chrome cookie faylni ochish
+sqlite3 Cookies "SELECT host_key, name, value, expires_utc FROM cookies WHERE name LIKE '%session%' OR name LIKE '%token%';"
+
+# Firefox cookie
+sqlite3 cookies.sqlite "SELECT host, name, value, expiry FROM moz_cookies;"
+
+# Firefox localStorage
+sqlite3 webappsstore.sqlite "SELECT originKey, key, value FROM webappsstore2;"
+```
+
+
+### 4. DISK IMAGE (E01, DD, RAW) UCHUN JARAYON
+
+**Step 1: Image ni mount qilish**
+```bash
+# E01 uchun
+sudo ewfmount image.E01 /mnt/ewf
+
+# Raw dd uchun (offset topib)
+sudo fdisk -lu image.raw
+sudo mount -o ro,loop,offset=1048576 image.raw /mnt/win
+```
+
+**Step 2: Artefaktlarni chiqarish**
+```bash
+# Brauzer cookie fayllarni topish
+find /mnt/win -path "*/Cookies" -o -path "*/cookies.sqlite" 2>/dev/null
+
+# Telegram tdata
+find /mnt/win -path "*/Telegram Desktop/tdata/*" 2>/dev/null
+
+# Credential fayllar
+find /mnt/win -path "*/Microsoft/Credentials/*" 2>/dev/null
+```
+
+**Step 3: Tahlil qilish (Windows VM yoki Wine bilan)**
+- NirSoft vositalarini `/external` parametri bilan ishlating
+- Har bir user profile uchun `NTUSER.DAT` registry hive dan DPAPI master key ni olish kerak 
+
+
+### 5. DUCH KELISH MUMKIN BO‘LGAN MUAMMOLAR VA YECHIMLAR
+
+| Muammo | Belgilari | Yechim |
+|--------|-----------|--------|
+| **DPAPI decrypt ishlamaydi** | `DataProtectionDecryptor` xato qaytaradi | User password to‘g‘riligini tekshiring. Agar password o‘zgargan bo‘lsa, eski password bilan urinib ko‘ring. `%AppData%\Microsoft\Protect\` dagi `Preferred` faylni tekshiring  |
+| **Cookie fayllar SQLite bilan ochilmaydi** | "file is not a database" | Fayl shifrlangan bo‘lishi mumkin. Cookie-Monster yoki `DPAPI` bilan decrypt qilish kerak  |
+| **Telegram tdata shifrlangan** | `*_key` va `*_data` fayllar mavjud, lekin ochilmaydi | Bu fayllar user-specific kalit bilan shifrlangan. Memory dump dan yoki process memory dan kalit olish mumkin. MD-RED kabi vositalar bu ma’lumotlarni tahlil qila oladi  |
+| **Brauzer ishlayotgan (live)** | Cookie fayllar process tomonidan lock qilingan | Cookie-Monster `--chromeCookiePID` parametri bilan process PID ni ko‘rsatib, handle orqali nusxalash mumkin  |
+| **Edge/Chrome master key** | DPAPI master key kerak | `%LocalAppData%\Google\Chrome\User Data\Local State` da `encrypted_key` mavjud. DPAPI bilan decrypt qilinadi  |
+| **Session token expired** | Token muddati o‘tgan | Token `expires_utc` maydonida muddat saqlanadi. Expired bo‘lsa ham, oldingi session haqida ma’lumot beradi  |
+
+
+### 6. MAKSIMAL BALL UCHUN STRATEGIYA (1200 ball)
+
+| Bosqich | Harakat | Vaqt | Ball ulushi |
+|---------|--------|------|-------------|
+| 1 | Brauzer cookie va localStorage larni yig‘ish (Chrome/Edge/Firefox) | 10 min | 25% |
+| 2 | Telegram tdata fayllarni yig‘ish va tahlil qilish | 10 min | 25% |
+| 3 | Windows Credentials va Vault dan DPAPI decrypt | 15 min | 20% |
+| 4 | Cookie-Monster yoki KeyScout bilan chuqur token extraction | 10 min | 15% |
+| 5 | SQLite manual tekshiruv (agar instrumental ishlamasa) | 10 min | 10% |
+| 6 | Hisobot: tokenlar, sessiyalar, credentiallar ro‘yxati | 5 min | 5% |
+
+**Hisobotga yoziladigan ma’lumotlar:**
+- Brauzer: domain, cookie name, token value (hash), expiry time, isHTTPOnly, isSecure 
+- Messenjer: app name, user identifier, token type, file location
+- Windows credential: target server, username, encrypted/decrypted status
+- Session active ekanligi (expiry vaqtiga qarab)
+
+
+### 7. QO‘SHIMCHA PROFESSIONAL VOSITALAR
+
+| Instrument | Turi | Qachon ishlatiladi |
+|------------|------|-------------------|
+| **Oxygen Forensic KeyScout + KeyDiver** | Commercial | Professional forensics, password recovery, multi-platform  |
+| **MD-PCM + MD-RED** | Commercial | PC messenjerlarni chuqur tahlil qilish (Telegram, Teams, Slack)  |
+| **Binalyze Air** | Enterprise | Remote acquisition, structured data extraction  |
+| **Cookie-Monster** | Open-source | Red team / Blue team, BOF formatda  |
+| **NirSoft to‘plami** | Freeware | Tez va qulay, external drive support  |
+
+---
+
+Agar biron bir qadamda aniq command yoki tahlil misoli kerak bo‘lsa, yozing. Jonli tizim yoki disk image bo‘yicha qo‘shimcha yordam berishim mumkin.
+++++++++++++++++++++++++++++++++++++++++++++++++
+Sizga kerakli decryptor vositalarini qayerdan olish va ularni qanday ishlatishni bosqichma-bosqich tushuntirib beraman. Barcha vositalar bepul va amaliy sinovdan o‘tgan.
+
+---
+
+## 1. DataProtectionDecryptor (DPAPI ma’lumotlarni decrypt qilish)
+
+Bu vosita Windows DPAPI (Data Protection API) bilan shifrlangan barcha ma’lumotlarni — Windows Credentials, Chrome parollari va cookie’lari, WiFi kalitlari, Outlook parollarini ochish uchun ishlatiladi.
+
+### 1.1. Qayerdan olish
+
+```bash
+# To‘g‘ridan-to‘g‘ri NirSoft rasmiy saytidan (faqat brauzer orqali, referer talab qilinadi)
+https://www.nirsoft.net/utils/dpapi_data_decryptor.html
+```
+**Muhim:** NirSoft’ning parol recovery vositalari faqat rasmiy saytdan brauzer orqali yuklanadi. To‘g‘ridan-to‘g‘ri link bilan yoki third-party saytlardan yuklab bo‘lmaydi.
+
+### 1.2. Qanday ishlatish
+
+**1.2.1. Joriy tizimda (live Windows):**
+```cmd
+# Yuklab olingan ZIP ni oching
+DataProtectionDecryptor.exe
+```
+GUI ochiladi. `File` → `Add Item` → kerakli DPAPI ma’lumot turini tanlang. `Decrypt` tugmasi bilan parollarni ko‘rasiz.
+
+**1.2.2. External drive yoki disk image uchun:**
+```cmd
+DataProtectionDecryptor.exe /external "D:\evidence\user_profile" "user_password"
+```
+Bu yerda:
+- `D:\evidence\user_profile` — user profil papkasi (masalan, `C:\Users\Username` ga ekvivalent)
+- `user_password` — foydalanuvchining Windows login paroli
+
+**CLI orqali CSV chiqarish:**
+```cmd
+DataProtectionDecryptor.exe /external "D:\profile" "pass123" /stab output.csv
+```
+
+---
+
+## 2. Cookie-Monster (Brauzer cookie va tokenlarni olish)
+
+Bu vosita Chrome, Edge, Firefox brauzerlaridan cookie va login data’larni yig‘adi, shuningdek ularni decrypt qilish uchun Python skriptni taqdim etadi.
+
+### 2.1. Qayerdan olish
+
+```bash
+# GitHub orqali clone
+git clone https://github.com/KingOfTheNOPs/cookie-monster.git
+cd cookie-monster
+
+# Python dependensiyalarni o‘rnatish
+pip3 install -r requirements.txt
+```
+
+### 2.2. Kompilyatsiya qilish (Windows exe)
+
+**Linux (Kali) da:**
+```bash
+make
+```
+**Windows da:**
+```cmd
+gcc cookie-monster.c -o cookie-monster.exe -lshlwapi -lcrypt32 -lntdll
+```
+
+### 2.3. Qanday ishlatish (Windows)
+
+**Barcha brauzerlarni skanerlash:**
+```cmd
+cookie-monster.exe --all
+```
+Bu buyruq:
+- Chrome, Edge va Firefox’ni tekshiradi
+- Cookie va Login Data fayllarini joriy papkaga nusxalaydi
+
+**Faqat Chrome cookie’lar:**
+```cmd
+cookie-monster.exe --chrome
+```
+
+**Firefox uchun:**
+```cmd
+cookie-monster.exe --firefox
+```
+
+### 2.4. Decrypt qilish (Python skript)
+
+**Chrome/Edge cookie faylini decrypt qilish:**
+```cmd
+python decrypt.py -k "\xec\xfc...." -o cookies -f ChromeCookies.db
+```
+`\xec\xfc....` — avval Cookie-Monster chiqargan kalit. Natijada:
+```
+Host: .github.com
+Path: /
+Name: user_session
+Cookie: x123.....
+Expires: Nov 11 2025 21:25:22
+```
+
+**Chrome/Edge parollarini decrypt qilish:**
+```cmd
+python decrypt.py -o passwords -f EdgePasswords.db -k '\xf9\x...'
+```
+Natija:
+```
+URL: https://example.com/
+Username: user@email.com
+Password: mypassword123
+```
+
+**JSON formatda saqlash (cookie-editor bilan import qilish uchun):**
+```cmd
+python decrypt.py -k "\xec\xfc..." -o cookie-editor -f ChromeCookies.db
+```
+
+---
+
+## 3. Telegram Tdata Decrypt (Telegram token va sessiyalar)
+
+Telegram lokal ma’lumotlari `tdata` papkasida saqlanadi. Buni decrypt qilish orqali boshqa tizimda Telegram’ga kirmasdan sessionni tiklash mumkin.
+
+### 3.1. Telegram ma’lumotlari qayerda
+
+```
+%AppData%\Telegram Desktop\tdata\
+```
+Muhim fayllar:
+- `key_datas` — asosiy decrypt kaliti (localKey)
+- `D877F783D5D3EF8Cs` — birinchi akkaunt uchun session
+- `D877F783D5D3EF8C\map` — foydalanuvchi ma’lumotlari (phone, username)
+
+Agar bir necha akkaunt bo‘lsa: `data#2` → `A7FDF864FBC10B77s` va `A7FDF864FBC10B77\map`
+
+### 3.2. Telegram sessionni boshqa tizimga ko‘chirish (account hijacking)
+
+**Eng oddiy usul — fayllarni nusxalash:**
+```cmd
+# Manba tizimdan (image yoki live)
+copy "%AppData%\Telegram Desktop\tdata\key_datas" "D:\extracted\"
+copy "%AppData%\Telegram Desktop\tdata\D877F783D5D3EF8Cs" "D:\extracted\"
+copy "%AppData%\Telegram Desktop\tdata\D877F783D5D3EF8C\map" "D:\extracted\"
+```
+
+**Yangi tizimda qayta tiklash:**
+1. Telegram Desktop’ni yoping
+2. `%AppData%\Telegram Desktop\tdata\` papkasini tozalang
+3. Nusxalangan fayllarni joylashtiring
+4. Telegram’ni oching — avtomatik login bo‘ladi
+
+### 3.3. Telegram ma’lumotlarini decrypt qilish (manual tahlil)
+
+Agar tdata fayllari bor bo‘lsa, lekin ularni ochish kerak bo‘lsa:
+
+```bash
+# Telegram Desktop Decrypt tool
+git clone https://github.com/atilaromero/telegram-desktop-decrypt.git
+cd telegram-desktop-decrypt
+python telegram-desktop-decrypt.py -d /path/to/tdata
+```
+
+Bu skript:
+- `key_datas` dan localKey ni chiqaradi
+- Har bir akkaunt uchun phone number, username, user_id ni ko‘rsatadi
+- Session kalitlarini eksport qiladi
+
+---
+
+## 4. XULOSA: Eng optimal instrumentlar va ularni ishlatish ketma-ketligi
+
+| Bosqich | Vazifa | Instrument | Qayerda |
+|---------|--------|------------|---------|
+| 1 | Windows DPAPI ma’lumotlari | DataProtectionDecryptor | https://www.nirsoft.net/utils/dpapi_data_decryptor.html |
+| 2 | Chrome/Edge cookie + parollar | Cookie-Monster | https://github.com/KingOfTheNOPs/cookie-monster |
+| 3 | Firefox cookie + parollar | Cookie-Monster + firepwd | https://github.com/lclevy/firepwd |
+| 4 | Telegram session token | Manual file copy | `%AppData%\Telegram Desktop\tdata\` |
+| 5 | Telegram ma’lumotlarini tahlil | telegram-desktop-decrypt | https://github.com/atilaromero/telegram-desktop-decrypt |
+
+**Tezkor workflow (disk image uchun):**
+1. Image ni mount qiling
+2. `DataProtectionDecryptor /external` bilan DPAPI ma’lumotlarini decrypt qiling
+3. `cookie-monster.exe --all` bilan brauzer fayllarini oling
+4. Python decrypt skripti bilan cookie va parollarni chiqaring
+5. Telegram tdata papkasidan `key_datas`, `*s`, `*map` fayllarni nusxalang
+
+Agar biron qadamda aniq xatolik yuz bersa yoki qo‘shimcha tushuntirish kerak bo‘lsa, yozing — darhol yordam beraman.
+++++++++++++++++++++++++++++++++++++++++++++++++++
+Linux muhitida (jonli tizim yoki disk image) messenjer token va sessiyalarni aniqlash Windows’dagi kabi muhim, ammo vositalar va fayl joylashuvlari farq qiladi. Quyida barcha kerakli instrumentlar va ularni ishlatish tartibi bosqichma-bosqich keltirilgan.
+
+---
+
+## 1. BRAUZER COOKIE VA TOKENLAR (LIVE LINUX YOKI IMAGE)
+
+### 1.1. HackBrowserData (Eng kuchli va universal vosita)
+
+Bu Go tilida yozilgan cross-platform vosita bo‘lib, Chrome, Firefox, Brave, Edge, Opera kabi brauzerlardan **cookie, parol, history, localStorage** va boshqa ma’lumotlarni decrypt qiladi.
+
+**O‘rnatish (Kali):**
+```bash
+# Go ni o‘rnatish (agar yo‘q bo‘lsa)
+sudo apt install golang-go -y
+
+# HackBrowserData ni clone va compile qilish
+git clone https://github.com/moonD4rk/HackBrowserData
+cd HackBrowserData/cmd/hack-browser-data
+go build
+```
+
+**Ishlatish (live Linux):**
+```bash
+# Barcha brauzerlarni avtomatik skanerlab, CSV formatda chiqarish
+./hack-browser-data -b all -f csv --dir ./browser_data
+
+# Faqat cookie’larni olish
+./hack-browser-data -b all -f csv --dir ./cookies_output
+# Natijada: chrome_cookie.csv, firefox_cookie.csv va h.k.
+```
+
+**Disk image uchun:** Agar image mount qilingan bo‘lsa (`/mnt/linux`), `-p` parametri bilan profil papkasini ko‘rsatasiz:
+```bash
+# Chrome uchun
+./hack-browser-data -b chrome -p "/mnt/linux/home/username/.config/google-chrome/Default" -f json
+
+# Firefox uchun
+./hack-browser-data -b firefox -p "/mnt/linux/home/username/.mozilla/firefox/*.default" -f json
+```
+
+**Chiqish formati:** CSV yoki JSON. Cookie faylida `host`, `name`, `value` (token), `expiry` vaqtlari bo‘ladi.
+
+### 1.2. Forensics Credential Harvester (Python)
+
+Chrome va Firefox’dan parol va cookie’larni olish uchun yana bir vosita.
+
+**O‘rnatish:**
+```bash
+git clone https://github.com/UZI-LOADED/Credential-Harvester
+cd Credential-Harvester
+pip install -r requirements.txt
+```
+
+**Ishlatish:**
+```bash
+# Interaktiv menyu
+python main.py
+# 1 - Chrome parollar, 2 - Firefox parollar
+```
+
+**Image uchun:** Skriptni o‘zgartirib, profil papkasini ko‘rsatish kerak yoki manzilni to‘g‘ridan-to‘g‘ri kodga yozish.
+
+### 1.3. Dumpzilla (Firefox maxsus)
+
+Faqat Firefox uchun forensik vosita.
+
+**O‘rnatish (Kali):**
+```bash
+sudo apt install dumpzilla -y
+```
+
+**Ishlatish:**
+```bash
+# Live tizim
+dumpzilla -f csv -o ./firefox_data
+
+# Image mount qilingan bo‘lsa
+dumpzilla -p /mnt/linux/home/username/.mozilla/firefox/*.default -f csv -o ./firefox_forensics
+```
+
+Cookie, history, password, bookmarks, DOM storage, session data – hammasini chiqaradi.
+
+---
+
+## 2. TELEGRAM TOKEN VA SESSIYALAR (LINUX)
+
+Telegram Desktop ma’lumotlari `~/.local/share/TelegramDesktop/tdata/` papkasida saqlanadi.
+
+### 2.1. Telegram Desktop TData Decryptor v2.0 (Eng yaxshi)
+
+Bu Python GUI va CLI vosita bo‘lib, tdata papkasidagi barcha fayllarni decrypt qiladi.
+
+**O‘rnatish:**
+```bash
+git clone https://github.com/Lucky7897/-Telegram-Desktop-TData-Decryptor-v2.0
+cd -Telegram-Desktop-TData-Decryptor-v2.0
+pip install -r requirements.txt
+```
+
+**Ishlatish (GUI):**
+```bash
+python launcher.py
+```
+GUI da:
+1. `Auto Search` tugmasi – tdata papkasini avtomatik topadi
+2. Agar Telegram Desktop’da local passcode qo‘yilgan bo‘lsa, parolni kiriting
+3. `Decrypt` tugmasi – natijalar JSON formatda saqlanadi
+
+**Ishlatish (CLI):**
+```python
+from tdata_crypto import FullTDataDecryptor
+
+decryptor = FullTDataDecryptor()
+decryptor.decrypt_tdata_folder('/home/username/.local/share/TelegramDesktop/tdata', 'optional_password')
+
+for account in decryptor.accounts:
+    print(f"User ID: {account.user_id}")
+    print(f"DC Info: {account.main_dc_id}")
+    print(f"Auth Keys: {account.auth_keys}")
+```
+
+**Chiqish formati (JSON):**
+```json
+{
+  "timestamp": "20240124_143022",
+  "accounts": [{
+    "user_id": 123456789,
+    "main_dc_id": 2,
+    "auth_keys": {"1": "hex_key..."}
+  }]
+}
+```
+
+**Image uchun:** Papka manzilini `/mnt/linux/home/username/.local/share/TelegramDesktop/tdata` qilib ko‘rsatasiz.
+
+### 2.2. tdata-decrypt (CLI alternativ)
+
+Yana bir Python CLI vosita.
+
+**O‘rnatish:**
+```bash
+git clone https://github.com/si6Och4j/tdata-decrypt
+pip install ./tdata-decrypt
+```
+
+**Ishlatish:**
+```bash
+tdata-decrypt /path/to/tdata
+```
+Foydalanuvchi ID, DC ma’lumotlari va auth key’larni chiqaradi.
+
+---
+
+## 3. WINDOWS CREDENTIAL VA DPAPI (LINUX ORQALI IMAGE TAHLILI)
+
+Agar siz Windows disk image tahlil qilayotgan bo‘lsangiz, Windows DPAPI bilan shifrlangan ma’lumotlarni Linux’da ochish mumkin.
+
+### 3.1. dploot (Python DPAPI Looting)
+
+SharpDPAPI ning Python rewriti, Kali’da to‘g‘ridan-to‘g‘ri mavjud.
+
+**O‘rnatish:**
+```bash
+sudo apt install python3-dploot -y
+```
+
+**Ishlatish (image mount qilingan):**
+```bash
+# Triage mode – masterkeys, credentials, browser, vaults, certificates
+dploot triage -d /mnt/win/Users/Username -m /mnt/win/Users/Username/AppData/Roaming/Microsoft/Protect
+
+# Faqat browser credential va cookie’lar
+dploot browser -d /mnt/win/Users/Username
+```
+
+**Kerakli fayllar:**
+- Master key: `%UserProfile%\AppData\Roaming\Microsoft\Protect\SID\*`
+- Credentials: `%UserProfile%\AppData\Roaming\Microsoft\Credentials\*`
+- Vaults: `%UserProfile%\AppData\Local\Microsoft\Vault\*`
+
+### 3.2. dpapi-ng (Python library)
+
+DPAPI NG (CNG DPAPI) ni decrypt qilish uchun Python library.
+
+**O‘rnatish:**
+```bash
+pip install dpapi-ng
+```
+
+**Ishlatish (Python skript):**
+```python
+from dpapi_ng import decrypt
+
+# DPAPI blob ni decrypt qilish
+decrypted = decrypt(encrypted_blob, master_key)
+```
+
+---
+
+## 4. AVTOMATIK FORENSICS TOOL – AUTOPSY (KALI)
+
+Agar siz disk image bilan ishlayotgan bo‘lsangiz, Autopsy GUI orqali brauzer ma’lumotlarini olish eng qulay.
+
+**O‘rnatish:**
+```bash
+sudo apt update && sudo apt install autopsy -y
+autopsy
+# Browserda http://127.0.0.1:9999 ochiladi
+```
+
+**Ishlatish:**
+1. `Create New Case` – case nomi va papkasini belgilang
+2. `Add Data Source` → `Disk Image or VM File` – image faylni tanlang
+3. `Next` → `Next` → `Finish` – image tahlili boshlanadi
+4. `Web History` tabiga o‘ting – Chrome, Firefox, Edge history va cookie’lari ko‘rinadi
+5. `Deleted Files` – o‘chirilgan history fayllarini tiklash mumkin
+
+**Eksport:** `Case` → `Export` → CSV yoki HTML formatda hisobot.
+
+---
+
+## 5. QAYERDAN QIDIRISH KERAK? (FAYLAR JOYLASHUVI)
+
+| Ma’lumot turi | Joylashuvi (Linux) |
+|--------------|-------------------|
+| **Chrome cookie** | `~/.config/google-chrome/Default/Cookies` (SQLite) |
+| **Chrome localStorage** | `~/.config/google-chrome/Default/Local Storage/leveldb/` |
+| **Firefox cookie** | `~/.mozilla/firefox/*.default/cookies.sqlite` |
+| **Firefox localStorage** | `~/.mozilla/firefox/*.default/webappsstore.sqlite` |
+| **Brave cookie** | `~/.config/BraveSoftware/Brave-Browser/Default/Cookies` |
+| **Telegram tdata** | `~/.local/share/TelegramDesktop/tdata/` |
+| **Discord** | `~/.config/discord/Local Storage/leveldb/` |
+
+**Disk image mount qilinganda:** `/mnt/linux` prefiksi bilan yuqoridagi yo‘llar.
+
+---
+
+## 6. MAKSIMAL NATIJA UCHUN STRATEGIYA
+
+| Bosqich | Harakat | Instrument | Vaqt |
+|--------|---------|------------|------|
+| 1 | Image mount (agar image bo‘lsa) | `mount`, `ewfmount` | 5 min |
+| 2 | Brauzer cookie va localStorage | HackBrowserData | 5 min |
+| 3 | Telegram tdata decrypt | Telegram Decryptor v2.0 | 5 min |
+| 4 | Windows credential (agar image Windows bo‘lsa) | dploot | 10 min |
+| 5 | Autopsy bilan chuqur tahlil (ixtiyoriy) | autopsy | 10 min |
+| 6 | Hisobot tayyorlash | CSV/JSON eksport | 5 min |
+
+**Hisobotga yoziladigan ma’lumotlar:**
+- Brauzer: domain, cookie name, token value (hash), expiry time
+- Telegram: user_id, dc_id, auth_keys
+- Windows credential: target server, username
+
+---
+
+## 7. QISQA MISOL (LIVE LINUX)
+
+```bash
+# 1. HackBrowserData yuklash
+git clone https://github.com/moonD4rk/HackBrowserData
+cd HackBrowserData/cmd/hack-browser-data
+go build
+
+# 2. Barcha brauzer ma’lumotlarini olish
+./hack-browser-data -b all -f json --dir ~/forensics_output
+
+# 3. Telegram tdata decrypt
+git clone https://github.com/Lucky7897/-Telegram-Desktop-TData-Decryptor-v2.0
+cd -Telegram-Desktop-TData-Decryptor-v2.0
+pip install -r requirements.txt
+python telegram_decryptor.py
+# GUI da "Auto Search" → "Decrypt"
+
+# 4. Natijalarni tekshirish
+cat ~/forensics_output/*.json
+cat ~/forensics_output/telegram_decrypt.json
+```
+
+Agar biron qadamda xatolik yuz bersa yoki qo‘shimcha tushuntirish kerak bo‘lsa, yozing.

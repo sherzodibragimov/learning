@@ -1,0 +1,390 @@
+7-vazifa: **Veb-brauzer orqali saytlardagi ma'lumotlarni qo'lga kiritish (900 ball)**
+
+Bu vazifa Windows muhitida (jonli tizim yoki disk image) brauzerlar orqali saqlangan ma'lumotlarni — cookie, token, parol, localStorage, history — aniqlash va ularni decrypt qilishni talab qiladi. Quyida **eng optimal instrumentlar** va **ketma-ketlik** keltirilgan.
+
+
+## 1. ENG YAXSHI TOOL: HACKBROWSERDATA
+
+**Nima uchun eng yaxshi:**
+- **Bir vaqtning o‘zida** Chrome, Edge, Firefox, Brave, Opera, Vivaldi va boshqa 10+ brauzerni qo‘llab-quvvatlaydi 
+- **Cross-platform** — Windows, Linux, macOS da ishlaydi
+- **Barcha ma’lumotlarni** chiqaradi: cookie, parol, localStorage, history, bookmarks, credit card
+- **Hech qanday o‘rnatish** kerak emas — bitta executable fayl
+- **DPAPI ni avtomatik** decrypt qiladi (Chrome/Edge parollari va cookie’lari uchun) 
+
+**Qayerdan olish:**
+```bash
+# GitHub dan clone (Kali da yoki Windows da Git bilan)
+git clone https://github.com/moonD4rk/HackBrowserData
+cd HackBrowserData/cmd/hack-browser-data
+go build
+```
+Yoki **pre-compiled** binary ni GitHub Release sahifasidan yuklab oling .
+
+**Ishlatish (Windows):**
+```cmd
+# Barcha brauzerlarni skanerlab, JSON formatda chiqarish
+hack-browser-data.exe -b all -f json --dir results
+
+# Faqat cookie’larni olish
+hack-browser-data.exe -b all -f csv --cookies-only
+
+# ZIP bilan arxivlash
+hack-browser-data.exe -b all -f json --dir results --zip
+```
+
+**Chiqish:** Har bir brauzer uchun alohida fayllar (`chrome_cookie.csv`, `firefox_password.json` va h.k.) .
+
+
+## 2. KETMA-KETLIK (WINDDOWs JONLI YOKI IMAGE)
+
+### 2.1. BOSQICH 1: BRAUZER MA’LUMOTLARINI YIG‘ISH
+
+**A) Jonli tizimda (Windows):**
+```cmd
+# HackBrowserData ni ishga tushiring
+.\hack-browser-data.exe -b all -f json --dir C:\forensics\browser_data
+
+# Agar brauzer ochiq bo‘lsa, yopish kerak emas — tool lock’larni avtomatik hal qiladi
+```
+
+**B) Disk image (E01, dd, raw) bo‘lsa:**
+```bash
+# Image ni Kali da mount qiling
+sudo ewfmount image.E01 /mnt/ewf
+# yoki raw uchun offset topib mount
+sudo mount -o ro,loop,offset=1048576 image.raw /mnt/win
+
+# HackBrowserData ni profil papkasini ko‘rsatib ishlating
+hack-browser-data.exe -b chrome -p "/mnt/win/Users/Username/AppData/Local/Google/Chrome/User Data/Default" -f json
+```
+
+### 2.2. BOSQICH 2: WINDOWS DPAPI (CREDENTIAL) MA’LUMOTLARINI OCHISH
+
+Agar brauzer parollari yoki cookie’lar DPAPI bilan shifrlangan bo‘lsa, quyidagi vositalar kerak.
+
+**DonPAPI (eng kuchli) — remote va local DPAPI dump:**
+```bash
+# Kali da
+git clone https://github.com/login-securite/DonPAPI
+cd DonPAPI
+pip install -r requirements.txt
+
+# Local tizim uchun (image mount qilingan)
+python DonPAPI.py --local -source "C:\Users\Username" --output ./dpapi_results
+```
+
+**Impacket dpapi.py (manual decrypt):**
+```bash
+# Master key ni decrypt qilish
+impacket-dpapi masterkey -file "/path/to/masterkey" -sid $USER_SID -password $USER_PASSWORD
+
+# Credential faylni decrypt
+impacket-dpapi credential -file "/path/to/credential_file" -key $MASTERKEY
+```
+DPAPI ma’lumotlari odatda quyidagi yo‘llarda saqlanadi :
+- `%UserProfile%\AppData\Roaming\Microsoft\Protect\` — master key
+- `%UserProfile%\AppData\Local\Microsoft\Credentials\` — credential fayllar
+- `%UserProfile%\AppData\Roaming\Microsoft\Credentials\` — credential fayllar
+
+### 2.3. BOSQICH 3: TELEGRAM TOKEN VA SESSIYALAR (WINDOWS)
+
+Telegram Desktop ma’lumotlari `%AppData%\Telegram Desktop\tdata\` papkasida saqlanadi.
+
+**Eng yaxshi vosita: SPECTRA (Telegram forensics framework) **
+```bash
+git clone https://github.com/SWORDIntel/SPECTRA
+cd SPECTRA
+pip install -r requirements.txt
+
+# Telegram session import
+python -m tgarchive accounts --import
+```
+
+**Yoki manual (oddiy usul):**
+```cmd
+# tdata papkasini nusxalash
+xcopy "%AppData%\Telegram Desktop\tdata" "D:\forensics\telegram_tdata" /E
+
+# Key fayllarni tekshirish
+dir D:\forensics\telegram_tdata\*.key
+```
+
+**Agar Telegram Explorer kerak bo‘lsa:**
+```bash
+pip install TelegramExplorer
+# GUI da ishlatish mumkin 
+```
+
+### 2.4. BOSQICH 4: LOCALSTORAGE VA SESSION TOKENLAR
+
+Brauzer localStorage (LevelDB) da token va sessiya ma’lumotlari saqlanadi.
+
+**HackBrowserData avtomatik localStorage ni ham chiqaradi:**
+```cmd
+hack-browser-data.exe -b chrome -f json --dir results
+# results/chrome_localstorage.json faylida tokenlar
+```
+
+**Manual tekshirish (agar instrumental ishlamasa):**
+```cmd
+# Chrome localStorage joylashuvi
+%LocalAppData%\Google\Chrome\User Data\Default\Local Storage\leveldb\
+
+# LevelDB fayllarni ochish
+# .log va .ldb fayllarni strings bilan tekshirish
+strings *.log | findstr /i "token session"
+```
+
+### 2.5. BOSQICH 5: HISOBOT YIG‘ISH
+
+**Barcha natijalarni birlashtirish:**
+```cmd
+# HackBrowserData chiqishlari
+dir results\*.json
+dir results\*.csv
+
+# DPAPI natijalari
+dir dpapi_results\
+
+# Telegram tdata nusxasi
+dir telegram_tdata\
+```
+
+
+## 3. QO‘SHIMCHA INSTRUMENTLAR (ZAXIRA)
+
+| Instrument | Vazifa | Qachon ishlatiladi |
+|------------|--------|-------------------|
+| **Chrome Cookie Spy** | Chromium cookie’larni ko‘rish  | Faqat cookie kerak bo‘lsa |
+| **NirSoft BrowsingHistoryView** | Brauzer history va cookie  | GUI bilan ishlash qulay |
+| **Mimikatz (DPAPI)** | DPAPI credential decrypt | DonPAPI ishlamasa |
+| **keyringr (R)** | DPAPI decrypt (R muhitida)  | Maxsus holatlar |
+
+
+## 4. MAKSIMAL NATIJA UCHUN STRATEGIYA
+
+| Vaqt | Bosqich | Instrument | Ball ulushi |
+|------|---------|------------|-------------|
+| 0-5 min | Brauzer cookie + token | **HackBrowserData** | 40% |
+| 5-10 min | Windows DPAPI credential | **DonPAPI** / Impacket | 20% |
+| 10-15 min | Telegram tdata | **SPECTRA** / manual copy | 20% |
+| 15-18 min | LocalStorage token | HackBrowserData (allaqachon) | 10% |
+| 18-20 min | Hisobot yig‘ish | CSV/JSON eksport | 10% |
+
+
+## 5. TEZKOR QO‘LLANMA (3 QADAMDA)
+
+**QADAM 1 — Brauzer ma’lumotlari:**
+```cmd
+# Yuklab oling: https://github.com/moonD4rk/HackBrowserData/releases
+hack-browser-data.exe -b all -f json --dir C:\forensics\browser_data --zip
+```
+
+**QADAM 2 — DPAPI credential:**
+```cmd
+# DonPAPI ni ishga tushiring
+python DonPAPI.py --local -source "C:\Users\%USERNAME%" --output ./dpapi_results
+```
+
+**QADAM 3 — Telegram tdata:**
+```cmd
+# Papkani nusxalash
+xcopy "%AppData%\Telegram Desktop\tdata" "C:\forensics\tdata" /E
+# key_datas va *.key fayllarni saqlang
+```
+
+**HISOBOT:** `C:\forensics\` papkasidagi barcha fayllarni arxivlab topshiring. Hisobotda quyidagilar bo‘lishi kerak:
+- Har bir domain uchun cookie nomi va token qiymati (hash)
+- DPAPI credentiallar (target, username, password)
+- Telegram user_id va auth_key
+
+---
+
+Agar biron bir qadamda xatolik yuz bersa yoki image mount qilishda muammo bo‘lsa, yozing.
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+7-vazifa (900 ball) – **Veb-brauzer orqali saytlardagi ma'lumotlarni qo'lga kiritish** Linux muhitida (jonli tizim yoki disk image) uchun to‘liq qo‘llanma.
+
+---
+
+## 1. ENG YAXSHI TOOL: HACKBROWSERDATA
+
+**Sababi:**
+- **Cross-platform** – Linux, Windows, macOS da ishlaydi.
+- **Bir vaqtning o‘zida** Chrome, Firefox, Brave, Edge, Opera va boshqa 10+ brauzerni qo‘llab-quvvatlaydi.
+- **Barcha ma’lumotlarni** chiqaradi: cookie, parol, localStorage, history, bookmarks.
+- **Hech qanday o‘rnatish** kerak emas — bitta binary fayl.
+
+**Yuklab olish (Kali/Ubuntu):**
+```bash
+# Go bilan compile qilish (tavsiya)
+git clone https://github.com/moonD4rk/HackBrowserData
+cd HackBrowserData/cmd/hack-browser-data
+go build
+# Binary: hack-browser-data (Linux) yoki hack-browser-data.exe (Windows)
+
+# Yoki pre-compiled binary ni GitHub release dan yuklab oling:
+# https://github.com/moonD4rk/HackBrowserData/releases
+```
+
+---
+
+## 2. JONLI LINUX TIZIMIDA ISHLATISH
+
+**Qadam 1: Brauzer ma’lumotlarini yig‘ish**
+```bash
+# Barcha brauzerlarni skanerlab, JSON formatda chiqarish
+./hack-browser-data -b all -f json --dir ~/forensics_browser
+
+# Faqat cookie’larni CSV formatda olish
+./hack-browser-data -b all -f csv --cookies-only --dir ~/forensics_browser
+
+# Faqat localStorage ni JSON da
+./hack-browser-data -b all -f json --local-storage-only --dir ~/forensics_browser
+```
+**Chiqish:** har bir brauzer uchun alohida fayllar (masalan `chrome_cookie.json`, `firefox_password.csv`).
+
+**Qadam 2: Firefox parollarini decrypt (agar kerak bo‘lsa)**
+Firefox parollari fayli (`logins.json`) shifrlangan. **Firepwd** bilan ochiladi:
+```bash
+git clone https://github.com/lclevy/firepwd
+cd firepwd
+pip install -r requirements.txt
+python firepwd.py -d ~/.mozilla/firefox/*.default
+```
+Natijada barcha login/password va cookie’lar JSON da chiqadi.
+
+**Qadam 3: LocalStorage va LevelDB tokenlari**
+Brauzer localStorage `leveldb` papkasida saqlanadi. HackBrowserData ularni chiqargan, lekin qo‘lda tekshirish uchun:
+```bash
+# Chrome localStorage papkasi
+ls ~/.config/google-chrome/Default/Local\ Storage/leveldb/
+# Tokenlarni qidirish
+strings ~/.config/google-chrome/Default/Local\ Storage/leveldb/*.log | grep -i "token\|session"
+```
+
+**Qadam 4: Telegram Desktop tdata (agar mavjud bo‘lsa)**
+Telegram ma’lumotlari `~/.local/share/TelegramDesktop/tdata/` da.
+```bash
+# Nusxalash
+cp -r ~/.local/share/TelegramDesktop/tdata ~/forensics_tdata
+```
+Keyin Windows uchun tavsiya qilingan **Telegram Desktop Decryptor v2.0** (Python, cross-platform) bilan decrypt qilish mumkin:
+```bash
+git clone https://github.com/Lucky7897/-Telegram-Desktop-TData-Decryptor-v2.0
+cd -Telegram-Desktop-TData-Decryptor-v2.0
+pip install -r requirements.txt
+python launcher.py   # GUI
+```
+GUI da `Auto Search` → `Decrypt`. Natijada foydalanuvchi ID, DC, auth key chiqadi.
+
+---
+
+## 3. DISK IMAGE (E01, DD, RAW) UCHUN
+
+**Qadam 1: Image ni mount qilish**
+```bash
+# Agar E01 bo‘lsa
+sudo ewfmount image.E01 /mnt/ewf
+# raw image hosil bo‘ladi: /mnt/ewf/ewf1
+
+# Agar raw dd bo‘lsa, partitsiya offsetni topish
+sudo fdisk -lu image.raw
+# Masalan, start=2048, sector=512 => offset=1048576
+sudo mount -o ro,loop,offset=1048576 image.raw /mnt/linux
+```
+
+**Qadam 2: Brauzer ma’lumotlarini yig‘ish (HackBrowserData)**
+```bash
+# Chrome uchun profil papkasini ko‘rsatib
+./hack-browser-data -b chrome -p "/mnt/linux/home/username/.config/google-chrome/Default" -f json --dir ./chrome_out
+
+# Firefox uchun
+./hack-browser-data -b firefox -p "/mnt/linux/home/username/.mozilla/firefox/*.default" -f json --dir ./firefox_out
+```
+Agar barcha brauzerlarni avtomatik skanerlamoqchi bo‘lsangiz, `-b all` ishlatib, profil papkasini `-p` bilan ko‘rsatish mumkin emas — ularni alohida bajarish kerak.
+
+**Qadam 3: Telegram tdata (image ichida)**
+```bash
+find /mnt/linux -path "*/TelegramDesktop/tdata" 2>/dev/null
+# Topilgan papkani nusxalash
+cp -r /mnt/linux/home/username/.local/share/TelegramDesktop/tdata ~/tdata_image
+```
+So‘ngra yuqoridagi decryptor bilan ochish.
+
+**Qadam 4: Firefox parollari (agar image mount qilingan bo‘lsa)**
+```bash
+python firepwd.py -d /mnt/linux/home/username/.mozilla/firefox/*.default
+```
+
+**Qadam 5: LocalStorage va LevelDB (image)**
+```bash
+find /mnt/linux -path "*/Local Storage/leveldb" 2>/dev/null
+# Topilgan fayllarni nusxalab, strings bilan tekshirish
+```
+
+---
+
+## 4. QO‘SHIMCHA INSTRUMENTLAR
+
+| Instrument | Vazifa | Qayerda |
+|------------|--------|---------|
+| **HackBrowserData** | Universal brauzer ma’lumotlari | [GitHub](https://github.com/moonD4rk/HackBrowserData) |
+| **firepwd** | Firefox parollarini decrypt | [GitHub](https://github.com/lclevy/firepwd) |
+| **Telegram Desktop Decryptor v2.0** | Telegram tdata tahlili | [GitHub](https://github.com/Lucky7897/-Telegram-Desktop-TData-Decryptor-v2.0) |
+| **sqlite3** | Manual cookie/history tahlili | `sudo apt install sqlite3` |
+| **strings** | LocalStorage tokenlar | `sudo apt install binutils` |
+
+---
+
+## 5. TEZKOR QO‘LLANMA (3 QADAM)
+
+**Jonli tizim:**
+```bash
+# 1. HackBrowserData
+./hack-browser-data -b all -f json --dir ~/browser_data --zip
+
+# 2. Firefox parollar (agar kerak)
+python firepwd.py -d ~/.mozilla/firefox/*.default
+
+# 3. Telegram tdata
+cp -r ~/.local/share/TelegramDesktop/tdata ~/tdata
+python telegram_decryptor.py   # GUI
+```
+
+**Disk image (Kali):**
+```bash
+# 1. Mount
+sudo mount -o ro,loop,offset=1048576 image.raw /mnt/linux
+
+# 2. Brauzer ma’lumotlari
+./hack-browser-data -b chrome -p "/mnt/linux/home/user/.config/google-chrome/Default" -f json --dir ./chrome
+
+# 3. Telegram
+cp -r /mnt/linux/home/user/.local/share/TelegramDesktop/tdata ./tdata
+python telegram_decryptor.py
+```
+
+---
+
+## 6. HISOBOT UCHUN MA’LUMOTLAR
+
+Hisobotga quyidagilarni kiritish kerak:
+- Brauzer: domain, cookie name, token value (hash), expiry time
+- Firefox: `logins.json` dan login/password (agar decrypt qilingan bo‘lsa)
+- LocalStorage tokenlar: kalit va qiymat
+- Telegram: user_id, dc_id, auth_keys
+
+**Namuna hisobot:**
+```
+Chrome cookies:
+- https://github.com: user_session = 12345... (expires 2025-12-31)
+- https://mail.google.com: SessionToken = xyz... (expires 2025-06-01)
+
+Telegram:
+- User ID: 123456789
+- DC: 2
+- Auth keys: {1: "hex..."}
+```
+
+Agar biron qadamda xatolik bo‘lsa yoki image mount qilishda muammo bo‘lsa, yozing.
